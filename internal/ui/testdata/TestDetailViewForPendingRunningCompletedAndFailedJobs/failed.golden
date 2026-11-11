@@ -1,0 +1,62 @@
+Job detail: 135874997
+
+Summary
+Job ID: 135874997
+Name: job-01
+User: user-01
+Account: account-01
+Partition: partition-01
+QOS: qos-01
+State: FAILED
+Node list: node-01
+Node count: 35
+
+Resources
+Requested TRES:
+  cpu: 35
+  mem: 35
+  node: 35
+  billing: 35
+Allocated TRES:
+  cpu: 4480
+  energy: -2
+  node: 35
+  billing: 4480
+
+Timing
+Submitted: 2026-11-10 22:32:24 UTC
+Started: 2026-11-10 22:52:37 UTC
+Ended: 2026-11-10 23:04:14 UTC
+Elapsed: 11:37
+Time limit: 120
+Exit: code 1
+
+Paths
+Working directory: /tmp/slurmtui-fixture/path-04
+Command: ./job.sh
+Stdout: /tmp/slurmtui-fixture/path-02
+Stderr: —
+Stdin: /tmp/slurmtui-fixture/path-01
+
+Steps
+135874997.batch (batch)
+  State: FAILED
+  Exit: code 1  Elapsed: 11m37s
+  Nodes: node-02
+135874997.extern (extern)
+  State: COMPLETED
+  Exit: code 0  Elapsed: 11m37s
+  Nodes: node-01
+135874997.0+0 (fms_SPEAR_F_nonsymMOM6_exec.x)
+  State: CANCELLED
+  Exit: signal KILL  Elapsed: 1m56s
+  Nodes: node-37
+135874997.0+1 (fms_SPEAR_F_nonsymMOM6_exec.x)
+  State: CANCELLED
+  Exit: signal KILL  Elapsed: 1m42s
+  Nodes: node-38
+
+Reason / Dependency
+Reason: None
+Dependency: —
+↑/↓ or j/k scroll  pgup/pgdn page  a all fields  esc back  q quit

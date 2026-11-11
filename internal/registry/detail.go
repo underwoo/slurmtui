@@ -69,9 +69,9 @@ func renderTRES(items []model.TRES) []string {
 	return lines
 }
 
-func renderTiming(d model.JobDetail, _ time.Time) []string {
+func renderTiming(d model.JobDetail, now time.Time) []string {
 	j := d.Job
-	return []string{fmt.Sprintf("Submitted: %s", timeString(j.SubmitTime)), fmt.Sprintf("Started: %s", timeString(j.StartTime)), fmt.Sprintf("Ended: %s", timeString(j.EndTime)), fmt.Sprintf("Elapsed: %s", durationString(j.ElapsedSeconds)), fmt.Sprintf("Time limit: %s", j.TimeLimit.String()), fmt.Sprintf("Exit: %s", exitString(j.ExitCode))}
+	return []string{fmt.Sprintf("Submitted: %s", timeString(j.SubmitTime)), fmt.Sprintf("Started: %s", timeString(j.StartTime)), fmt.Sprintf("Ended: %s", timeString(j.EndTime)), fmt.Sprintf("Elapsed: %s", elapsedString(j, now)), fmt.Sprintf("Time limit: %s", j.TimeLimit.String()), fmt.Sprintf("Exit: %s", exitString(j.ExitCode))}
 }
 
 func renderPaths(d model.JobDetail, _ time.Time) []string {
@@ -104,9 +104,34 @@ func renderAllFields(d model.JobDetail, _ time.Time) []string {
 
 func timeString(value model.NoValNumber) string {
 	if n, ok := value.Value(); ok {
+		if n <= 0 {
+			return "—"
+		}
 		return time.Unix(n, 0).UTC().Format("2006-01-02 15:04:05 UTC")
 	}
 	return value.String()
+}
+
+func elapsedString(job model.Job, now time.Time) string {
+	state := "UNKNOWN"
+	if len(job.States) > 0 {
+		state = string(job.States[0])
+	}
+	if state == string(model.StatePending) {
+		return "—"
+	}
+	seconds := job.ElapsedSeconds
+	if state == string(model.StateRunning) {
+		if started, ok := job.StartTime.Value(); ok && started > 0 && now.Unix() >= started {
+			seconds = now.Unix() - started
+		} else if seconds <= 0 {
+			return "—"
+		}
+	}
+	if seconds < 0 {
+		return "—"
+	}
+	return formatDuration(seconds)
 }
 
 func durationString(seconds int64) string {

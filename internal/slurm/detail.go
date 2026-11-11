@@ -28,7 +28,11 @@ func GetJobDetail(ctx context.Context, runner Runner, job model.Job, fromRecent 
 		}
 		return model.JobDetail{}, fmt.Errorf("run scontrol: %w", err)
 	}
-	return decodeScontrolDetail(data)
+	detail, err := decodeScontrolDetail(data)
+	if err != nil && isInvalidJobID(err) {
+		return getSacctDetail(ctx, runner, job.DisplayID())
+	}
+	return detail, err
 }
 
 func isInvalidJobID(err error) bool {
@@ -38,10 +42,14 @@ func isInvalidJobID(err error) bool {
 
 func decodeScontrolDetail(data []byte) (model.JobDetail, error) {
 	var envelope struct {
-		Jobs []json.RawMessage `json:"jobs"`
+		Jobs   []json.RawMessage `json:"jobs"`
+		Errors []slurmMessage    `json:"errors"`
 	}
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return model.JobDetail{}, fmt.Errorf("decode scontrol JSON: %w", err)
+	}
+	if len(envelope.Errors) > 0 {
+		return model.JobDetail{}, fmt.Errorf("scontrol reported errors: %s", joinMessages(envelope.Errors))
 	}
 	if len(envelope.Jobs) == 0 {
 		return model.JobDetail{}, errors.New("scontrol JSON contains no job")
@@ -88,9 +96,8 @@ func decodeSacctDetail(data []byte, id string) (model.JobDetail, error) {
 		return model.JobDetail{}, fmt.Errorf("sacct reported errors: %s", joinMessages(envelope.Errors))
 	}
 	for _, record := range envelope.Jobs {
-		job := record.sacctJob
-		if fmt.Sprint(job.ID) == id || strings.HasPrefix(id, fmt.Sprint(job.ID)+"_") || strings.HasPrefix(id, fmt.Sprint(job.ID)+"+") {
-			job := record.job()
+		job := record.job()
+		if job.DisplayID() == id || fmt.Sprint(record.ID) == id {
 			job.WorkingDirectory, job.Stdout, job.Stderr, job.Stdin = record.WorkingDirectory, record.Stdout, record.Stderr, record.Stdin
 			return model.JobDetail{Job: job, Requested: record.TRES.Requested, Allocated: record.TRES.Allocated, Steps: record.jobSteps(), RawJSON: append(json.RawMessage(nil), record.raw...)}, nil
 		}

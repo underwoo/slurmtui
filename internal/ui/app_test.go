@@ -91,6 +91,8 @@ func TestRefreshFailureKeepsExistingRows(t *testing.T) {
 }
 
 func TestDetailViewForPendingRunningCompletedAndFailedJobs(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	clock := func() time.Time { return time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC) }
 	queue := readQueueFixture(t)
 	running := readRunningFixture(t)
 	cases := []struct {
@@ -99,17 +101,17 @@ func TestDetailViewForPendingRunningCompletedAndFailedJobs(t *testing.T) {
 		fromRecent bool
 		command    string
 		response   []byte
-		want       model.State
 	}{
-		{name: "pending", job: queue[0], command: "scontrol show job " + queue[0].DisplayID() + " --json", response: wrapJobFixture(t, queue[0].DisplayID(), "squeue-01.json"), want: model.StatePending},
-		{name: "running", job: running[0], command: "scontrol show job " + running[0].DisplayID() + " --json", response: wrapJobFixture(t, running[0].DisplayID(), "squeue-02.json"), want: model.StateRunning},
-		{name: "completed", job: model.Job{ID: 34827648, States: []model.State{model.StateCompleted}}, fromRecent: true, command: "sacct --json -j 34827648", response: readSlurmFixture(t, "sacct_recent.json"), want: model.StateCompleted},
-		{name: "failed", job: model.Job{ID: 135874997, States: []model.State{model.StateFailed}}, fromRecent: true, command: "sacct --json -j 135874997", response: readSlurmFixture(t, "sacct_failed.json"), want: model.StateFailed},
+		{name: "pending", job: queue[0], command: "scontrol show job " + queue[0].DisplayID() + " --json", response: wrapJobFixture(t, queue[0].DisplayID(), "squeue-01.json")},
+		{name: "running", job: running[0], command: "scontrol show job " + running[0].DisplayID() + " --json", response: wrapJobFixture(t, running[0].DisplayID(), "squeue-02.json")},
+		{name: "completed", job: model.Job{ID: 34827648, States: []model.State{model.StateCompleted}}, fromRecent: true, command: "sacct --json -j 34827648", response: readSlurmFixture(t, "sacct_recent.json")},
+		{name: "failed", job: model.Job{ID: 135874997, States: []model.State{model.StateFailed}}, fromRecent: true, command: "sacct --json -j 135874997", response: readSlurmFixture(t, "sacct_failed.json")},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			runner := &detailTestRunner{command: tc.command, response: tc.response}
-			app := NewWithOptions(runner, Options{Scope: slurm.ScopeMe})
+			app := NewWithOptions(runner, Options{Scope: slurm.ScopeMe, Clock: clock})
+			app.width, app.height = 120, 100
 			if tc.fromRecent {
 				app.tab = registry.RecentTab
 				app.recentJobs = []model.Job{tc.job}
@@ -123,17 +125,26 @@ func TestDetailViewForPendingRunningCompletedAndFailedJobs(t *testing.T) {
 			msg := cmd()
 			_, _ = app.Update(msg)
 			view := app.View()
-			if !bytes.Contains([]byte(view), []byte(string(tc.want))) || !bytes.Contains([]byte(view), []byte("Summary")) {
-				t.Fatalf("detail view missing state or summary:\n%s", view)
-			}
 			if bytes.Contains([]byte(view), []byte("All fields")) {
 				t.Fatalf("All fields should be collapsed by default:\n%s", view)
 			}
+			teatest.RequireEqualOutput(t, []byte(view))
 			_, _ = app.Update(tea.KeyMsg{Type: tea.KeyEsc})
 			if app.detail != nil {
 				t.Fatal("esc did not return to the job list")
 			}
 		})
+	}
+}
+
+func TestDetailViewSplitsMultilineCommandIntoViewportRows(t *testing.T) {
+	app := NewWithOptions(nil, Options{Scope: slurm.ScopeMe})
+	app.width, app.height = 120, 100
+	app.detailJob = model.Job{ID: 7}
+	app.detail = &model.JobDetail{Job: model.Job{ID: 7, Command: "#!/bin/sh\nprintf done\n"}}
+	view := app.View()
+	if !strings.Contains(view, "Command: #!/bin/sh\nprintf done\n") {
+		t.Fatalf("multiline command was not split into viewport rows:\n%s", view)
 	}
 }
 

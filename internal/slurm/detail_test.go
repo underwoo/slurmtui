@@ -43,6 +43,18 @@ func TestGetJobDetailFallsBackToSacctWhenScontrolJobIsPurged(t *testing.T) {
 	}
 }
 
+func TestGetJobDetailFallsBackWhenScontrolJSONReportsInvalidJob(t *testing.T) {
+	runner := newFakeRunner()
+	runner.responses["scontrol show job 34827648 --json"] = []byte(`{"jobs":[],"errors":[{"description":"Invalid job id specified","source":"slurmctld"}]}`)
+	runner.responses["sacct --json -j 34827648"] = fixture(t, "sacct_recent.json")
+	if _, err := GetJobDetail(context.Background(), runner, model.Job{ID: 34827648}, false); err != nil {
+		t.Fatal(err)
+	}
+	if len(runner.calls) != 2 || runner.calls[1] != "sacct --json -j 34827648" {
+		t.Fatalf("fallback calls = %v", runner.calls)
+	}
+}
+
 func TestDecodeSacctDetailIncludesStepsAndPaths(t *testing.T) {
 	detail, err := decodeSacctDetail(fixture(t, "sacct_recent.json"), "34827648")
 	if err != nil {
@@ -54,7 +66,7 @@ func TestDecodeSacctDetailIncludesStepsAndPaths(t *testing.T) {
 	if detail.Steps[0].ID != "34827648.batch" || detail.Steps[1].ID != "34827648.extern" {
 		t.Fatalf("step IDs = %q, %q", detail.Steps[0].ID, detail.Steps[1].ID)
 	}
-	if detail.Job.WorkingDirectory == "" || detail.Job.Stdout == "" || detail.Job.Command == "" {
+	if detail.Job.WorkingDirectory == "" || detail.Job.Stdout == "" || detail.Job.Command != "./job.sh" {
 		t.Fatalf("paths or command missing: %+v", detail.Job)
 	}
 	if len(detail.Requested) == 0 || len(detail.Allocated) == 0 {
@@ -72,6 +84,20 @@ func TestDecodeSacctDetailFailed26_05(t *testing.T) {
 	}
 	if !containsState(detail.Job.States, model.StateFailed) || len(detail.Steps) != 4 {
 		t.Fatalf("state/steps = %v/%d", detail.Job.States, len(detail.Steps))
+	}
+}
+
+func TestDecodeSacctDetailMatchesArrayAndHetDisplayIDs(t *testing.T) {
+	for _, id := range []string{"900000_4", "910000+1"} {
+		t.Run(id, func(t *testing.T) {
+			detail, err := decodeSacctDetail(fixture(t, "sacct_recent.json"), id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := detail.Job.DisplayID(); got != id {
+				t.Fatalf("display ID = %q, want %q", got, id)
+			}
+		})
 	}
 }
 

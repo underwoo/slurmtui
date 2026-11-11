@@ -260,7 +260,9 @@ func (a *App) renderDetail(out *strings.Builder, width int) {
 				continue
 			}
 			lines = append(lines, "", titleStyle.Render(section.Title))
-			lines = append(lines, section.Render(*a.detail, a.clock())...)
+			for _, line := range section.Render(*a.detail, a.clock()) {
+				lines = append(lines, strings.Split(line, "\n")...)
+			}
 		}
 		available := max(1, a.height-2)
 		if a.height <= 0 {

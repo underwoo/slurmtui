@@ -116,6 +116,7 @@ type sacctJob struct {
 	ExitCode         model.ExitCode `json:"exit_code"`
 	WorkingDirectory string         `json:"working_directory"`
 	Command          string         `json:"script"`
+	SubmitLine       string         `json:"submit_line"`
 	Stdout           string         `json:"stdout"`
 	Stderr           string         `json:"stderr"`
 	Stdin            string         `json:"stdin"`
@@ -133,7 +134,7 @@ func (record sacctJob) job() model.Job {
 		SubmitTime: present(record.Time.Submission), StartTime: present(record.Time.Start),
 		EndTime:          present(record.Time.End),
 		ExitCode:         record.ExitCode,
-		WorkingDirectory: record.WorkingDirectory, Command: record.Command,
+		WorkingDirectory: record.WorkingDirectory, Command: firstNonEmpty(record.SubmitLine, record.Command),
 		Stdout: record.Stdout, Stderr: record.Stderr, Stdin: record.Stdin,
 	}
 	if record.Array.JobID > 0 {
@@ -146,6 +147,15 @@ func (record sacctJob) job() model.Job {
 		job.HetJobOffset = record.Het.Offset
 	}
 	return job
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func present(value int64) model.NoValNumber {
