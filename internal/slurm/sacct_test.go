@@ -70,6 +70,16 @@ func TestListRecentScrubbedFixtureNormalizesAndFilters(t *testing.T) {
 	if result.Jobs[0].EndTime.Number != 1794351631 || result.Jobs[0].StateReason != "None" {
 		t.Fatalf("sacct end/reason was not normalized: end=%+v reason=%q", result.Jobs[0].EndTime, result.Jobs[0].StateReason)
 	}
+	var allocationNodeCount int64
+	for _, job := range result.Jobs {
+		if job.ID == 135874997 {
+			allocationNodeCount = job.NodeCount.Number
+			break
+		}
+	}
+	if allocationNodeCount != 35 {
+		t.Fatalf("sacct allocation node count = %d, want 35 for job 135874997", allocationNodeCount)
+	}
 }
 
 func TestListRecentErrors(t *testing.T) {

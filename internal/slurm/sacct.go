@@ -94,9 +94,10 @@ type sacctJob struct {
 		Current []model.State `json:"current"`
 		Reason  string        `json:"reason"`
 	} `json:"state"`
-	Dependency string `json:"dependency"`
-	Nodes      string `json:"nodes"`
-	Time       struct {
+	Dependency      string `json:"dependency"`
+	Nodes           string `json:"nodes"`
+	AllocationNodes int64  `json:"allocation_nodes"`
+	Time            struct {
 		Elapsed    int64             `json:"elapsed"`
 		Start      int64             `json:"start"`
 		End        int64             `json:"end"`
@@ -122,6 +123,7 @@ func (record sacctJob) job() model.Job {
 		Account: record.Account, Partition: record.Partition, QOS: record.QOS,
 		States: record.State.Current, StateReason: record.State.Reason,
 		Dependency: record.Dependency, NodeList: record.Nodes,
+		NodeCount: present(record.AllocationNodes),
 		TimeLimit: record.Time.Limit, ElapsedSeconds: record.Time.Elapsed,
 		SubmitTime: present(record.Time.Submission), StartTime: present(record.Time.Start),
 		EndTime:  present(record.Time.End),
