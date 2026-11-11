@@ -13,6 +13,27 @@ A terminal interface for viewing Slurm jobs and their details.
 
 slurmtui uses Slurm's JSON interfaces; it has no plain-text output fallback.
 
+## Download
+
+Tagged semantic versions publish static Linux binaries for amd64 and arm64, along with a `SHA256SUMS` file, on the [GitHub Releases page](https://github.com/underwoo/slurmtui/releases). The repository is private, so authenticate the GitHub CLI first with `gh auth login`.
+
+For example, download the `v0.1.0` release and verify the assets:
+
+```sh
+gh release download v0.1.0 --repo underwoo/slurmtui
+sha256sum -c SHA256SUMS
+```
+
+Run the binary for your machine's architecture:
+
+```sh
+./slurmtui-linux-amd64
+# or
+./slurmtui-linux-arm64
+```
+
+The binaries are attached directly to the release; no Go toolchain is needed on the machine where you run them.
+
 ## Build and run
 
 ```sh
