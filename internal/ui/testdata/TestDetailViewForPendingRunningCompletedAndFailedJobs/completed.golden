@@ -1,0 +1,54 @@
+Job detail: 34827648
+
+Summary
+Job ID: 34827648
+Name: job-01
+User: user-01
+Account: account-01
+Partition: partition-01
+QOS: qos-01
+State: COMPLETED
+Node list: node-01
+Node count: 1
+
+Resources
+Requested TRES:
+  cpu: 1
+  mem: 32768
+  node: 1
+  billing: 165
+Allocated TRES:
+  cpu: 1
+  mem: 32768
+  node: 1
+  billing: 165
+
+Timing
+Submitted: 2026-11-10 23:00:24 UTC
+Started: 2026-11-10 23:00:26 UTC
+Ended: 2026-11-10 23:00:31 UTC
+Elapsed: 0:05
+Time limit: 210
+Exit: code 0
+
+Paths
+Working directory: /tmp/slurmtui-fixture/path-03
+Command: ./job.sh
+Stdout: /tmp/slurmtui-fixture/path-01
+Stderr: /tmp/slurmtui-fixture/path-01
+Stdin: /tmp/slurmtui-fixture/path-02
+
+Steps
+34827648.batch (batch)
+  State: COMPLETED
+  Exit: code 0  Elapsed: 5s
+  Nodes: node-01
+34827648.extern (extern)
+  State: COMPLETED
+  Exit: code 0  Elapsed: 5s
+  Nodes: node-01
+
+Reason / Dependency
+Reason: None
+Dependency: —
+↑/↓ or j/k scroll  pgup/pgdn page  a all fields  esc back  q quit

@@ -61,6 +61,13 @@ type Job struct {
 	HetJobID         NoValNumber `json:"het_job_id"`
 	HetJobOffset     NoValNumber `json:"het_job_offset"`
 	ExitCode         ExitCode    `json:"exit_code"`
+	WorkingDirectory string      `json:"current_working_directory"`
+	Command          string      `json:"command"`
+	Stdout           string      `json:"stdout_expanded"`
+	Stderr           string      `json:"stderr_expanded"`
+	Stdin            string      `json:"stdin_expanded"`
+	TRESRequested    string      `json:"tres_req_str"`
+	TRESAllocated    string      `json:"tres_alloc_str"`
 }
 
 // DisplayID returns the Slurm identifier for an array task or heterogeneous
