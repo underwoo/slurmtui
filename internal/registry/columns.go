@@ -1,0 +1,123 @@
+// Package registry contains the built-in job columns shared by the UI.
+package registry
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"slurmtui/internal/model"
+)
+
+type Tab string
+
+const (
+	QueueTab  Tab = "queue"
+	RecentTab Tab = "recent"
+)
+
+type Column struct {
+	ID             string
+	Header         string
+	Width          int
+	MinWidth       int
+	DefaultVisible bool
+	RecentOnly     bool
+	Value          func(model.Job, time.Time) string
+}
+
+func DefaultColumns() []Column {
+	return []Column{
+		{ID: "job_id", Header: "JobID", Width: 12, MinWidth: 6, DefaultVisible: true, Value: func(job model.Job, _ time.Time) string { return job.DisplayID() }},
+		{ID: "name", Header: "Name", Width: 22, MinWidth: 7, DefaultVisible: true, Value: func(job model.Job, _ time.Time) string { return job.Name }},
+		{ID: "user", Header: "User", Width: 12, MinWidth: 6, DefaultVisible: true, Value: func(job model.Job, _ time.Time) string { return job.UserName }},
+		{ID: "account", Header: "Account", Width: 12, MinWidth: 6, DefaultVisible: true, Value: func(job model.Job, _ time.Time) string { return job.Account }},
+		{ID: "partition", Header: "Partition", Width: 10, MinWidth: 6, DefaultVisible: true, Value: func(job model.Job, _ time.Time) string { return job.Partition }},
+		{ID: "qos", Header: "QOS", Width: 9, MinWidth: 5, DefaultVisible: true, Value: func(job model.Job, _ time.Time) string { return job.QOS }},
+		{ID: "state", Header: "State", Width: 14, MinWidth: 7, DefaultVisible: true, Value: func(job model.Job, _ time.Time) string { return firstState(job.States) }},
+		{ID: "elapsed_limit", Header: "Elapsed/Limit", Width: 19, MinWidth: 10, DefaultVisible: true, Value: elapsedLimit},
+		{ID: "nodes", Header: "Nodes", Width: 7, MinWidth: 5, DefaultVisible: true, Value: func(job model.Job, _ time.Time) string { return job.NodeCount.String() }},
+		{ID: "node_reason", Header: "NodeList(Reason)", Width: 24, MinWidth: 8, DefaultVisible: true, Value: nodeListReason},
+		{ID: "end", Header: "End", Width: 16, MinWidth: 8, DefaultVisible: true, RecentOnly: true, Value: func(job model.Job, _ time.Time) string {
+			if value, ok := job.EndTime.Value(); ok {
+				return time.Unix(value, 0).UTC().Format("01-02 15:04")
+			}
+			return "—"
+		}},
+	}
+}
+
+func firstState(states []model.State) string {
+	if len(states) == 0 {
+		return "UNKNOWN"
+	}
+	return string(states[0])
+}
+
+func elapsedLimit(job model.Job, now time.Time) string {
+	state := firstState(job.States)
+	elapsed := "—"
+	if state != string(model.StatePending) {
+		seconds := job.ElapsedSeconds
+		if state == string(model.StateRunning) {
+			if started, ok := job.StartTime.Value(); ok && now.Unix() >= started {
+				seconds = now.Unix() - started
+			}
+		}
+		elapsed = formatDuration(seconds)
+	}
+	limit := "—"
+	if job.TimeLimit.Infinite {
+		limit = "∞"
+	} else if value, ok := job.TimeLimit.Value(); ok {
+		limit = formatDuration(value * 60)
+	}
+	return elapsed + "/" + limit
+}
+
+func formatDuration(seconds int64) string {
+	if seconds < 0 {
+		seconds = 0
+	}
+	hours := seconds / 3600
+	minutes := (seconds % 3600) / 60
+	remaining := seconds % 60
+	if hours > 0 {
+		return fmt.Sprintf("%d:%02d:%02d", hours, minutes, remaining)
+	}
+	return fmt.Sprintf("%d:%02d", minutes, remaining)
+}
+
+func nodeListReason(job model.Job, _ time.Time) string {
+	state := firstState(job.States)
+	if state == string(model.StateRunning) && job.NodeList != "" {
+		return job.NodeList
+	}
+	if state == string(model.StatePending) {
+		reason := job.StateReason
+		if reason == "" {
+			reason = job.StateDescription
+		}
+		if reason != "" {
+			return "(" + reason + ")"
+		}
+	}
+	if job.NodeList != "" {
+		return job.NodeList
+	}
+	if job.StateReason != "" && !strings.EqualFold(job.StateReason, "none") {
+		return "(" + job.StateReason + ")"
+	}
+	return "—"
+}
+
+func VisibleColumns(tab Tab) []Column {
+	all := DefaultColumns()
+	visible := make([]Column, 0, len(all))
+	for _, column := range all {
+		if column.DefaultVisible && (!column.RecentOnly || tab == RecentTab) {
+			visible = append(visible, column)
+		}
+	}
+	return visible
+}

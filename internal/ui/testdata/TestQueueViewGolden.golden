@@ -1,0 +1,11 @@
+Slurm TUI  scope: me
+[Queue]  Recent
+JobID       Name        User        Account     Partition  QOS       State       Elapsed/Li… Nodes   NodeList(R…
+─────────── ─────────── ─────────── ─────────── ────────── ───────── ─────────── ─────────── ─────── ───────────
+34827745    job-01      user-01     account-01  partition… qos-01    PENDING     —/3:00:00   1       (None)     
+34827746    job-02      user-01     account-01  partition… qos-01    PENDING     —/4:00:00   1       (None)     
+34818458    job-03      user-02     account-02  partition… qos-01    RUNNING     20:22:43/1… 1       node-04    
+34818463    job-04      user-02     account-03  partition… qos-01    RUNNING     20:22:13/1… 1       node-03    
+34818476    job-05      user-02     account-03  partition… qos-01    RUNNING     20:21:33/1… 1       node-05    
+Queue: 5 jobs
+tab/1/2 view  ↑/↓ select  r refresh  u scope  ? help  q quit
