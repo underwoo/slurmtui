@@ -1,5 +1,10 @@
 package model
 
+import (
+	"fmt"
+	"strconv"
+)
+
 // State is one of Slurm's job-state names. It remains a string so newer
 // Slurm states can be displayed even before this package names them.
 type State string
@@ -46,14 +51,28 @@ type Job struct {
 	Tasks            NoValNumber `json:"tasks"`
 	Priority         NoValNumber `json:"priority"`
 	TimeLimit        NoValNumber `json:"time_limit"`
+	ElapsedSeconds   int64       `json:"elapsed_seconds"`
 	SubmitTime       NoValNumber `json:"submit_time"`
 	StartTime        NoValNumber `json:"start_time"`
+	EndTime          NoValNumber `json:"end_time"`
 	ArrayJobID       NoValNumber `json:"array_job_id"`
 	ArrayTaskID      NoValNumber `json:"array_task_id"`
 	ArrayTaskString  string      `json:"array_task_string"`
 	HetJobID         NoValNumber `json:"het_job_id"`
 	HetJobOffset     NoValNumber `json:"het_job_offset"`
 	ExitCode         ExitCode    `json:"exit_code"`
+}
+
+// DisplayID returns the Slurm identifier for an array task or heterogeneous
+// job component, falling back to the numeric job ID.
+func (j Job) DisplayID() string {
+	if j.ArrayJobID.Set && j.ArrayTaskID.Set && j.ArrayTaskID.Number > 0 {
+		return fmt.Sprintf("%d_%d", j.ArrayJobID.Number, j.ArrayTaskID.Number)
+	}
+	if j.HetJobID.Set && j.HetJobOffset.Set && j.HetJobOffset.Number > 0 {
+		return fmt.Sprintf("%d+%d", j.HetJobID.Number, j.HetJobOffset.Number)
+	}
+	return strconv.FormatInt(j.ID, 10)
 }
 
 type ExitCode struct {

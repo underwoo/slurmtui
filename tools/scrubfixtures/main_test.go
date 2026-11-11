@@ -132,10 +132,15 @@ func TestScrubberPreservesNestedSlurmIDsNamesAndEmptyPaths(t *testing.T) {
 			"id":   map[string]any{"set": true, "infinite": false, "number": json.Number("9")},
 			"name": "KILL",
 		}},
-		"steps":          []any{map[string]any{"step": map[string]any{"id": "135874997.batch", "name": "batch"}}},
+		"steps": []any{map[string]any{
+			"step":  map[string]any{"id": "135874997.batch", "name": "batch"},
+			"nodes": map[string]any{"range": "host[001-002]"},
+			"tres":  map[string]any{"allocated": []any{map[string]any{"node": "host001"}}},
+		}},
 		"tres":           map[string]any{"allocated": []any{map[string]any{"id": json.Number("42"), "name": "lustre"}}},
 		"association":    map[string]any{"id": json.Number("812")},
 		"standard_error": "",
+		"sluid":          "private-sluid",
 	}}}
 	cleaned := newScrubber().cleanRoot(input, 0).(map[string]any)
 	job := cleaned["jobs"].([]any)[0].(map[string]any)
@@ -159,6 +164,13 @@ func TestScrubberPreservesNestedSlurmIDsNamesAndEmptyPaths(t *testing.T) {
 	}
 	if job["standard_error"] != "" {
 		t.Fatalf("empty path changed to %q", job["standard_error"])
+	}
+	if job["sluid"] == "private-sluid" {
+		t.Fatal("sluid was not anonymized")
+	}
+	step := job["steps"].([]any)[0].(map[string]any)
+	if step["nodes"].(map[string]any)["range"] == "host[001-002]" || step["tres"].(map[string]any)["allocated"].([]any)[0].(map[string]any)["node"] == "host001" {
+		t.Fatal("nested node names were not anonymized")
 	}
 }
 

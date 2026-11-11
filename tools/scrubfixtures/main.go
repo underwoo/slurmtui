@@ -288,6 +288,18 @@ func (s *scrubber) replacement(key, parent string, value any) (any, bool) {
 		return s.fake("cluster", text, "cluster"), true
 	case "current_working_directory", "working_directory", "cwd", "stdin", "stdout", "stderr", "standard_input", "standard_output", "standard_error", "stdin_expanded", "stdout_expanded", "stderr_expanded":
 		return s.fakePath(key, text), true
+	case "source":
+		if parent == "client" {
+			return s.fakePath(key, text), true
+		}
+	case "range":
+		if parent == "nodes" {
+			return s.fake("node", text, "node"), true
+		}
+	case "node":
+		return s.fake("node", text, "node"), true
+	case "sluid", "original_sluid":
+		return s.fake("sluid", text, "sluid"), true
 	case "command", "submit_line":
 		return "./job.sh", true
 	case "nodes", "node_list", "list", "node_name", "required_nodes", "scheduled_nodes", "allocating_node", "batch_host", "failed_node", "allocation_nodes":
