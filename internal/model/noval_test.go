@@ -33,3 +33,16 @@ func TestNoValNumberValueAndString(t *testing.T) {
 		})
 	}
 }
+
+func TestExitCodeSignalObject(t *testing.T) {
+	var value ExitCode
+	if err := json.Unmarshal([]byte(`{"signal":{"id":{"set":true,"infinite":false,"number":9},"name":"KILL"}}`), &value); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := value.Signal.ID.Value(); got != 9 || !ok {
+		t.Fatalf("Signal.ID.Value() = (%d, %t), want (9, true)", got, ok)
+	}
+	if value.Signal.Name != "KILL" {
+		t.Fatalf("Signal.Name = %q, want KILL", value.Signal.Name)
+	}
+}

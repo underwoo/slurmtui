@@ -125,6 +125,43 @@ func TestScrubberClearsNestedComments(t *testing.T) {
 	}
 }
 
+func TestScrubberPreservesNestedSlurmIDsNamesAndEmptyPaths(t *testing.T) {
+	input := map[string]any{"jobs": []any{map[string]any{
+		"name": "private-job",
+		"exit_code": map[string]any{"signal": map[string]any{
+			"id":   map[string]any{"set": true, "infinite": false, "number": json.Number("9")},
+			"name": "KILL",
+		}},
+		"steps":          []any{map[string]any{"step": map[string]any{"id": "135874997.batch", "name": "batch"}}},
+		"tres":           map[string]any{"allocated": []any{map[string]any{"id": json.Number("42"), "name": "lustre"}}},
+		"association":    map[string]any{"id": json.Number("812")},
+		"standard_error": "",
+	}}}
+	cleaned := newScrubber().cleanRoot(input, 0).(map[string]any)
+	job := cleaned["jobs"].([]any)[0].(map[string]any)
+	if job["name"] == "private-job" {
+		t.Fatal("job name was not anonymized")
+	}
+	gotSignal := job["exit_code"].(map[string]any)["signal"].(map[string]any)
+	if gotSignal["name"] != "KILL" || gotSignal["id"].(map[string]any)["number"] != json.Number("9") {
+		t.Fatalf("signal fields changed: %#v", gotSignal)
+	}
+	gotStep := job["steps"].([]any)[0].(map[string]any)["step"].(map[string]any)
+	if gotStep["id"] != "135874997.batch" || gotStep["name"] != "batch" {
+		t.Fatalf("step fields changed: %#v", gotStep)
+	}
+	gotTRES := job["tres"].(map[string]any)["allocated"].([]any)[0].(map[string]any)
+	if gotTRES["id"] != json.Number("42") || gotTRES["name"] != "lustre" {
+		t.Fatalf("TRES fields changed: %#v", gotTRES)
+	}
+	if job["association"].(map[string]any)["id"] == json.Number("812") {
+		t.Fatal("association ID was not anonymized")
+	}
+	if job["standard_error"] != "" {
+		t.Fatalf("empty path changed to %q", job["standard_error"])
+	}
+}
+
 func TestScrubberIsDeterministic(t *testing.T) {
 	input := []byte(`{"jobs":[{"job_id":1,"job_state":["PENDING"],"account":"a2","user_name":"u2","standard_output":"/x/out","current_working_directory":"/x"},{"job_id":2,"job_state":["RUNNING"],"account":"a1","user_name":"u1","standard_output":"/y/out","current_working_directory":"/y"}]}`)
 	clean := func() []byte {

@@ -176,6 +176,10 @@ func sliceJobs(value any, offset, count int) any {
 }
 
 func (s *scrubber) clean(key string, value any) any {
+	return s.cleanAt(key, "", value)
+}
+
+func (s *scrubber) cleanAt(key, parent string, value any) any {
 	if value == nil {
 		return nil
 	}
@@ -189,16 +193,16 @@ func (s *scrubber) clean(key string, value any) any {
 		}
 		return scrubStrings(value, "[scrubbed script]")
 	}
-	if replacement, ok := s.replacement(normalized, value); ok {
+	if replacement, ok := s.replacement(normalized, parent, value); ok {
 		return replacement
 	}
 	switch value := value.(type) {
 	case map[string]any:
-		return s.cleanMap(value)
+		return s.cleanMap(value, normalized)
 	case []any:
 		cleaned := make([]any, len(value))
 		for i, item := range value {
-			cleaned[i] = s.clean(key, item)
+			cleaned[i] = s.cleanAt(key, parent, item)
 		}
 		return cleaned
 	default:
@@ -206,7 +210,11 @@ func (s *scrubber) clean(key string, value any) any {
 	}
 }
 
-func (s *scrubber) cleanMap(value map[string]any) map[string]any {
+func (s *scrubber) cleanMap(value map[string]any, parent ...string) map[string]any {
+	parentKey := ""
+	if len(parent) != 0 {
+		parentKey = parent[0]
+	}
 	cleaned := make(map[string]any, len(value))
 	keys := make([]string, 0, len(value))
 	for key := range value {
@@ -215,7 +223,7 @@ func (s *scrubber) cleanMap(value map[string]any) map[string]any {
 	sort.Strings(keys)
 	for _, key := range keys {
 		item := value[key]
-		cleaned[key] = s.clean(key, item)
+		cleaned[key] = s.cleanAt(key, parentKey, item)
 	}
 	return cleaned
 }
@@ -241,13 +249,13 @@ func scrubStrings(value any, replacement string) any {
 	}
 }
 
-func (s *scrubber) replacement(key string, value any) (any, bool) {
-	if key == "user_id" || key == "group_id" || key == "association_id" || key == "id" {
+func (s *scrubber) replacement(key, parent string, value any) (any, bool) {
+	if key == "user_id" || key == "group_id" || key == "association_id" || (key == "id" && parent == "association") {
 		base := 10000
 		switch key {
 		case "group_id":
 			base = 20000
-		case "association_id", "id":
+		case "association_id":
 			base = 30000
 		}
 		return s.fakeNumber(key, fmt.Sprint(value), base), true
@@ -263,11 +271,14 @@ func (s *scrubber) replacement(key string, value any) (any, bool) {
 		return s.fake("group", text, "group"), true
 	case "account":
 		return s.fake("account", text, "account"), true
-	case "association_id", "id":
+	case "association_id":
 		return s.fakeNumber("association_id", text, 30000), true
 	case "wckey":
 		return s.fake(key, text, "wckey"), true
 	case "name":
+		if parent != "jobs" && parent != "reservation" {
+			return nil, false
+		}
 		return s.fake(key, text, "job"), true
 	case "partition":
 		return s.fake(key, text, "partition"), true
@@ -316,5 +327,8 @@ func (s *scrubber) fakeNumber(kind, original string, base int) any {
 }
 
 func (s *scrubber) fakePath(key, original string) string {
+	if original == "" {
+		return ""
+	}
 	return "/tmp/slurmtui-fixture/" + s.fake("path", original, "path")
 }

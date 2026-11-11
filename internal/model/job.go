@@ -59,5 +59,11 @@ type Job struct {
 type ExitCode struct {
 	Status     []string    `json:"status"`
 	ReturnCode NoValNumber `json:"return_code"`
-	Signal     NoValNumber `json:"signal"`
+	Signal     ExitSignal  `json:"signal"`
+}
+
+// ExitSignal describes the terminating signal reported by Slurm.
+type ExitSignal struct {
+	ID   NoValNumber `json:"id"`
+	Name string      `json:"name"`
 }
