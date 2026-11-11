@@ -22,6 +22,7 @@ For example, download the `v0.1.0` release and verify the assets:
 ```sh
 gh release download v0.1.0 --repo underwoo/slurmtui
 sha256sum -c SHA256SUMS
+chmod +x slurmtui-linux-*
 ```
 
 Run the binary for your machine's architecture:
