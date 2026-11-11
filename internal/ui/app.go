@@ -46,6 +46,13 @@ type App struct {
 	queueError    error
 	recentError   error
 	lastRefresh   time.Time
+	detail        *model.JobDetail
+	detailJob     model.Job
+	detailLoading bool
+	detailError   error
+	detailScroll  int
+	showAllFields bool
+	detailRequest uint64
 }
 
 func New() tea.Model {
@@ -78,6 +85,29 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
 	case tea.KeyMsg:
+		if a.detail != nil || a.detailLoading || a.detailError != nil {
+			switch msg.String() {
+			case "esc":
+				a.detail, a.detailError = nil, nil
+				a.detailLoading, a.showAllFields = false, false
+				a.detailScroll = 0
+				a.detailRequest++
+			case "up", "k":
+				a.detailScroll = max(0, a.detailScroll-1)
+			case "down", "j":
+				a.detailScroll++
+			case "pgup":
+				a.detailScroll = max(0, a.detailScroll-a.pageSize())
+			case "pgdown":
+				a.detailScroll += a.pageSize()
+			case "a":
+				a.showAllFields = !a.showAllFields
+				a.detailScroll = 0
+			case "q", "ctrl+c":
+				return a, tea.Quit
+			}
+			return a, nil
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return a, tea.Quit
@@ -106,6 +136,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.scope = slurm.ScopeMe
 			}
 			return a, tea.Batch(a.startQueueFetch(), a.startRecentFetch())
+		case "enter":
+			_, jobs, cursor, _, _ := a.activeData()
+			if len(jobs) > 0 && cursor >= 0 && cursor < len(jobs) {
+				a.detailJob = jobs[cursor]
+				a.detailLoading, a.detailError, a.detail = true, nil, nil
+				a.detailScroll = 0
+				a.detailRequest++
+				return a, a.startDetailFetch(a.detailJob, a.tab == registry.RecentTab, a.detailRequest)
+			}
 		}
 	case tickMsg:
 		return a, tea.Batch(a.startQueueFetch(), a.startRecentFetch(), a.scheduleTick())
@@ -131,6 +170,16 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.recentJobs = msg.result.Jobs
 			a.lastRefresh = msg.at
 		}
+	case detailResult:
+		if msg.request != a.detailRequest {
+			break
+		}
+		a.detailLoading = false
+		a.detailError = msg.err
+		if msg.err == nil {
+			detail := msg.detail
+			a.detail = &detail
+		}
 	}
 	return a, nil
 }
@@ -140,8 +189,12 @@ func (a *App) View() string {
 	if width <= 0 {
 		width = 120
 	}
-	tabName, jobs, cursor, loading, sourceErr := a.activeData()
 	var out strings.Builder
+	if a.detail != nil || a.detailLoading || a.detailError != nil {
+		a.renderDetail(&out, width)
+		return out.String()
+	}
+	tabName, jobs, cursor, loading, sourceErr := a.activeData()
 	fmt.Fprintf(&out, "%s  %s\n", titleStyle.Render("Slurm TUI"), mutedStyle.Render("scope: "+string(a.scope)))
 	var queueTab, recentTab string
 	if a.tab == registry.QueueTab {
@@ -154,7 +207,7 @@ func (a *App) View() string {
 	fmt.Fprintf(&out, "%s  %s\n", queueTab, recentTab)
 
 	if a.showHelp {
-		fmt.Fprintln(&out, "tab / 1 / 2 switch views   ↑/↓ or j/k select   r refresh   u toggle scope   ? help   q quit")
+		fmt.Fprintln(&out, "tab / 1 / 2 switch views   ↑/↓ or j/k select   enter details   r refresh   u toggle scope   ? help   q quit")
 	} else {
 		columns := registry.VisibleColumns(a.tab)
 		widths := fitWidths(columns, width)
@@ -187,8 +240,54 @@ func (a *App) View() string {
 	} else {
 		fmt.Fprintln(&out, mutedStyle.Render(status))
 	}
-	fmt.Fprint(&out, mutedStyle.Render("tab/1/2 view  ↑/↓ select  r refresh  u scope  ? help  q quit"))
+	fmt.Fprint(&out, mutedStyle.Render("tab/1/2 view  ↑/↓ select  enter details  r refresh  u scope  ? help  q quit"))
 	return out.String()
+}
+
+func (a *App) renderDetail(out *strings.Builder, width int) {
+	fmt.Fprintf(out, "%s\n", titleStyle.Render("Job detail: "+a.detailJob.DisplayID()))
+	if a.detailLoading {
+		fmt.Fprintln(out, "Loading job details…")
+	} else if a.detailError != nil {
+		fmt.Fprintln(out, errorStyle.Render("Could not load job details: "+a.detailError.Error()))
+	} else {
+		lines := make([]string, 0, 64)
+		for _, section := range registry.DetailSections() {
+			if section.ID == "all" && !a.showAllFields {
+				continue
+			}
+			if section.Applies != nil && !section.Applies(*a.detail) {
+				continue
+			}
+			lines = append(lines, "", titleStyle.Render(section.Title))
+			lines = append(lines, section.Render(*a.detail, a.clock())...)
+		}
+		available := max(1, a.height-2)
+		if a.height <= 0 {
+			available = 20
+		}
+		maxScroll := max(0, len(lines)-available)
+		a.detailScroll = min(a.detailScroll, maxScroll)
+		end := min(len(lines), a.detailScroll+available)
+		for _, line := range lines[a.detailScroll:end] {
+			fmt.Fprintln(out, truncateLine(line, width))
+		}
+	}
+	fmt.Fprintln(out, mutedStyle.Render("↑/↓ or j/k scroll  pgup/pgdn page  a all fields  esc back  q quit"))
+}
+
+func truncateLine(line string, width int) string {
+	if width < 1 {
+		return ""
+	}
+	runes := []rune(line)
+	if len(runes) <= width {
+		return line
+	}
+	if width == 1 {
+		return "…"
+	}
+	return string(runes[:width-1]) + "…"
 }
 
 func (a *App) renderTable(out *strings.Builder, columns []registry.Column, widths []int, jobs []model.Job, cursor, tableHeight int) {
@@ -377,6 +476,19 @@ func (a *App) startRecentFetch() tea.Cmd {
 	}
 }
 
+func (a *App) startDetailFetch(job model.Job, fromRecent bool, request uint64) tea.Cmd {
+	if a.runner == nil {
+		a.detailLoading = false
+		a.detailError = fmt.Errorf("slurm runner is unavailable")
+		return nil
+	}
+	runner := a.runner
+	return func() tea.Msg {
+		detail, err := slurm.GetJobDetail(context.Background(), runner, job, fromRecent)
+		return detailResult{detail: detail, err: err, request: request}
+	}
+}
+
 func (a *App) scheduleTick() tea.Cmd {
 	return tea.Tick(a.options.RefreshInterval, func(time.Time) tea.Msg { return tickMsg{} })
 }
@@ -393,4 +505,9 @@ type recentResult struct {
 	err    error
 	at     time.Time
 	scope  slurm.Scope
+}
+type detailResult struct {
+	detail  model.JobDetail
+	err     error
+	request uint64
 }

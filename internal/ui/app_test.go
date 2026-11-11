@@ -2,10 +2,13 @@ package ui
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -85,6 +88,108 @@ func TestRefreshFailureKeepsExistingRows(t *testing.T) {
 	if len(app.queueJobs) != 1 || app.queueJobs[0].Name != "keep" || app.queueError == nil {
 		t.Fatalf("failed refresh changed existing rows: jobs=%+v err=%v", app.queueJobs, app.queueError)
 	}
+}
+
+func TestDetailViewForPendingRunningCompletedAndFailedJobs(t *testing.T) {
+	queue := readQueueFixture(t)
+	running := readRunningFixture(t)
+	cases := []struct {
+		name       string
+		job        model.Job
+		fromRecent bool
+		command    string
+		response   []byte
+		want       model.State
+	}{
+		{name: "pending", job: queue[0], command: "scontrol show job " + queue[0].DisplayID() + " --json", response: wrapJobFixture(t, queue[0].DisplayID(), "squeue-01.json"), want: model.StatePending},
+		{name: "running", job: running[0], command: "scontrol show job " + running[0].DisplayID() + " --json", response: wrapJobFixture(t, running[0].DisplayID(), "squeue-02.json"), want: model.StateRunning},
+		{name: "completed", job: model.Job{ID: 34827648, States: []model.State{model.StateCompleted}}, fromRecent: true, command: "sacct --json -j 34827648", response: readSlurmFixture(t, "sacct_recent.json"), want: model.StateCompleted},
+		{name: "failed", job: model.Job{ID: 135874997, States: []model.State{model.StateFailed}}, fromRecent: true, command: "sacct --json -j 135874997", response: readSlurmFixture(t, "sacct_failed.json"), want: model.StateFailed},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			runner := &detailTestRunner{command: tc.command, response: tc.response}
+			app := NewWithOptions(runner, Options{Scope: slurm.ScopeMe})
+			if tc.fromRecent {
+				app.tab = registry.RecentTab
+				app.recentJobs = []model.Job{tc.job}
+			} else {
+				app.queueJobs = []model.Job{tc.job}
+			}
+			_, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+			if cmd == nil {
+				t.Fatal("enter did not start detail fetch")
+			}
+			msg := cmd()
+			_, _ = app.Update(msg)
+			view := app.View()
+			if !bytes.Contains([]byte(view), []byte(string(tc.want))) || !bytes.Contains([]byte(view), []byte("Summary")) {
+				t.Fatalf("detail view missing state or summary:\n%s", view)
+			}
+			if bytes.Contains([]byte(view), []byte("All fields")) {
+				t.Fatalf("All fields should be collapsed by default:\n%s", view)
+			}
+			_, _ = app.Update(tea.KeyMsg{Type: tea.KeyEsc})
+			if app.detail != nil {
+				t.Fatal("esc did not return to the job list")
+			}
+		})
+	}
+}
+
+type detailTestRunner struct {
+	command  string
+	response []byte
+}
+
+func (r *detailTestRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
+	if command := name + " " + strings.Join(args, " "); command != r.command {
+		return nil, fmt.Errorf("unexpected command %q", command)
+	}
+	return r.response, nil
+}
+
+func readRunningFixture(t *testing.T) []model.Job {
+	t.Helper()
+	data := readSlurmFixture(t, "squeue-02.json")
+	var response struct {
+		Jobs []model.Job `json:"jobs"`
+	}
+	if err := json.Unmarshal(data, &response); err != nil {
+		t.Fatal(err)
+	}
+	return response.Jobs
+}
+
+func wrapJobFixture(t *testing.T, id, filename string) []byte {
+	t.Helper()
+	data := readSlurmFixture(t, filename)
+	var response struct {
+		Jobs []json.RawMessage `json:"jobs"`
+	}
+	if err := json.Unmarshal(data, &response); err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range response.Jobs {
+		var job model.Job
+		if err := json.Unmarshal(raw, &job); err != nil {
+			t.Fatal(err)
+		}
+		if job.DisplayID() == id {
+			return append(append([]byte(`{"jobs":[`), raw...), []byte(`]}`)...)
+		}
+	}
+	t.Fatalf("fixture %s has no job %s", filename, id)
+	return nil
+}
+
+func readSlurmFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }
 
 func readQueueFixture(t *testing.T) []model.Job {
