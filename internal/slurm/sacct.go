@@ -24,7 +24,9 @@ func ListRecent(ctx context.Context, runner Runner, scope Scope, window time.Dur
 	if now == nil {
 		now = time.Now
 	}
-	since := now().Add(-window).UTC().Format("2006-01-02T15:04:05")
+	// sacct interprets a timezone-free -S value in its local timezone. Keep
+	// the injected clock's location so tests and callers can control that zone.
+	since := now().Add(-window).Format("2006-01-02T15:04:05")
 	args := []string{"--json", "-X", "-S", since}
 	if scope == ScopeAll {
 		args = append(args, "-a")
