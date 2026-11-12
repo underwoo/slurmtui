@@ -7,13 +7,13 @@ import (
 	"time"
 )
 
-func TestListRecentUsesAbsoluteTimeAndScope(t *testing.T) {
+func TestListRecentFormatsStartTimeInClockLocationAndScope(t *testing.T) {
 	fixedNow := time.Date(2026, 11, 11, 0, 0, 0, 0, time.FixedZone("test", -5*60*60))
 	clock := func() time.Time { return fixedNow }
 
 	t.Run("me uses caller default", func(t *testing.T) {
 		runner := newFakeRunner()
-		runner.addFixture(t, "sacct", []string{"--json", "-X", "-S", "2026-11-11T04:00:00"}, "sacct_recent_empty.json")
+		runner.addFixture(t, "sacct", []string{"--json", "-X", "-S", "2026-11-10T23:00:00"}, "sacct_recent_empty.json")
 		result, err := ListRecent(context.Background(), runner, ScopeMe, time.Hour, clock)
 		if err != nil {
 			t.Fatal(err)
@@ -21,14 +21,14 @@ func TestListRecentUsesAbsoluteTimeAndScope(t *testing.T) {
 		if len(result.Jobs) != 0 || result.Jobs == nil {
 			t.Fatalf("empty recent jobs = %#v, want non-nil empty slice", result.Jobs)
 		}
-		if got := runner.calls[0]; got != "sacct --json -X -S 2026-11-11T04:00:00" {
+		if got := runner.calls[0]; got != "sacct --json -X -S 2026-11-10T23:00:00" {
 			t.Fatalf("command = %q", got)
 		}
 	})
 
 	t.Run("all adds all-users flag", func(t *testing.T) {
 		runner := newFakeRunner()
-		runner.addFixture(t, "sacct", []string{"--json", "-X", "-S", "2026-11-11T04:00:00", "-a"}, "sacct_recent_empty.json")
+		runner.addFixture(t, "sacct", []string{"--json", "-X", "-S", "2026-11-10T23:00:00", "-a"}, "sacct_recent_empty.json")
 		if _, err := ListRecent(context.Background(), runner, ScopeAll, time.Hour, clock); err != nil {
 			t.Fatal(err)
 		}
