@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -35,6 +36,7 @@ type App struct {
 	clock   func() time.Time
 
 	width, height int
+	mode          mode
 	showHelp      bool
 	tab           registry.Tab
 	scope         slurm.Scope
@@ -49,7 +51,6 @@ type App struct {
 	lastRefresh   time.Time
 	detail        *model.JobDetail
 	detailJob     model.Job
-	detailLoading bool
 	detailError   error
 	detailScroll  int
 	showAllFields bool
@@ -89,67 +90,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
 	case tea.KeyMsg:
-		if a.detail != nil || a.detailLoading || a.detailError != nil {
-			switch msg.String() {
-			case "esc":
-				a.detail, a.detailError = nil, nil
-				a.detailLoading, a.showAllFields = false, false
-				a.detailScroll = 0
-				a.detailRequest++
-			case "up", "k":
-				a.detailScroll = max(0, a.detailScroll-1)
-			case "down", "j":
-				a.detailScroll++
-			case "pgup":
-				a.detailScroll = max(0, a.detailScroll-a.pageSize())
-			case "pgdown":
-				a.detailScroll += a.pageSize()
-			case "a":
-				a.showAllFields = !a.showAllFields
-				a.detailScroll = 0
-			case "q", "ctrl+c":
-				return a, tea.Quit
-			}
-			return a, nil
-		}
-		switch msg.String() {
-		case "q", "ctrl+c":
-			return a, tea.Quit
-		case "?":
-			a.showHelp = !a.showHelp
-		case "tab":
-			a.toggleTab()
-		case "1":
-			a.tab = registry.QueueTab
-		case "2":
-			a.tab = registry.RecentTab
-		case "up", "k":
-			a.moveCursor(-1)
-		case "down", "j":
-			a.moveCursor(1)
-		case "pgup":
-			a.moveCursor(-a.pageSize())
-		case "pgdown":
-			a.moveCursor(a.pageSize())
-		case "r":
-			return a, tea.Batch(a.startQueueFetch(), a.startRecentFetch())
-		case "u":
-			if a.scope == slurm.ScopeMe {
-				a.scope = slurm.ScopeAll
-			} else {
-				a.scope = slurm.ScopeMe
-			}
-			return a, tea.Batch(a.startQueueFetch(), a.startRecentFetch())
-		case "enter":
-			_, jobs, cursor, _, _ := a.activeData()
-			if len(jobs) > 0 && cursor >= 0 && cursor < len(jobs) {
-				a.detailJob = jobs[cursor]
-				a.detailLoading, a.detailError, a.detail = true, nil, nil
-				a.detailScroll = 0
-				a.detailRequest++
-				return a, a.startDetailFetch(a.detailJob, a.tab == registry.RecentTab, a.detailRequest)
-			}
-		}
+		return a, a.handleKey(msg)
 	case tickMsg:
 		return a, tea.Batch(a.startQueueFetch(), a.startRecentFetch(), a.scheduleTick())
 	case queueResult:
@@ -178,7 +119,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.request != a.detailRequest {
 			break
 		}
-		a.detailLoading = false
 		a.detailError = msg.err
 		if msg.err == nil {
 			detail := msg.detail
@@ -188,13 +128,126 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
+func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
+	switch a.mode {
+	case modeDetail:
+		return a.handleDetailKey(msg)
+	case modeFilter:
+		return a.handleFilterKey(msg)
+	case modePicker:
+		return a.handlePickerKey(msg)
+	case modeConfirm:
+		return a.handleConfirmKey(msg)
+	case modeForm:
+		return a.handleFormKey(msg)
+	default:
+		return a.handleListKey(msg)
+	}
+}
+
+func (a *App) handleListKey(msg tea.KeyMsg) tea.Cmd {
+	switch {
+	case key.Matches(msg, appKeys.quit):
+		return tea.Quit
+	case key.Matches(msg, appKeys.help):
+		a.showHelp = !a.showHelp
+	case key.Matches(msg, appKeys.tab):
+		a.toggleTab()
+	case key.Matches(msg, appKeys.queue):
+		a.tab = registry.QueueTab
+	case key.Matches(msg, appKeys.recent):
+		a.tab = registry.RecentTab
+	case key.Matches(msg, appKeys.up):
+		a.moveCursor(-1)
+	case key.Matches(msg, appKeys.down):
+		a.moveCursor(1)
+	case key.Matches(msg, appKeys.pageUp):
+		a.moveCursor(-a.pageSize())
+	case key.Matches(msg, appKeys.pageDown):
+		a.moveCursor(a.pageSize())
+	case key.Matches(msg, appKeys.refresh):
+		return tea.Batch(a.startQueueFetch(), a.startRecentFetch())
+	case key.Matches(msg, appKeys.scope):
+		if a.scope == slurm.ScopeMe {
+			a.scope = slurm.ScopeAll
+		} else {
+			a.scope = slurm.ScopeMe
+		}
+		return tea.Batch(a.startQueueFetch(), a.startRecentFetch())
+	case key.Matches(msg, appKeys.enter):
+		_, jobs, cursor, _, _ := a.activeData()
+		if len(jobs) > 0 && cursor >= 0 && cursor < len(jobs) {
+			a.detailJob = jobs[cursor]
+			a.mode = modeDetail
+			a.detailError, a.detail = nil, nil
+			a.detailScroll = 0
+			a.detailRequest++
+			return a.startDetailFetch(a.detailJob, a.tab == registry.RecentTab, a.detailRequest)
+		}
+	}
+	return nil
+}
+
+func (a *App) handleDetailKey(msg tea.KeyMsg) tea.Cmd {
+	switch {
+	case key.Matches(msg, appKeys.back):
+		a.mode = modeList
+		a.detail, a.detailError = nil, nil
+		a.showAllFields = false
+		a.detailScroll = 0
+		a.detailRequest++
+	case key.Matches(msg, appKeys.up):
+		a.detailScroll = max(0, a.detailScroll-1)
+	case key.Matches(msg, appKeys.down):
+		a.detailScroll++
+	case key.Matches(msg, appKeys.pageUp):
+		a.detailScroll = max(0, a.detailScroll-a.pageSize())
+	case key.Matches(msg, appKeys.pageDown):
+		a.detailScroll += a.pageSize()
+	case key.Matches(msg, appKeys.allFields):
+		a.showAllFields = !a.showAllFields
+		a.detailScroll = 0
+	case key.Matches(msg, appKeys.quit):
+		return tea.Quit
+	}
+	return nil
+}
+
+func (a *App) handleFilterKey(msg tea.KeyMsg) tea.Cmd {
+	if key.Matches(msg, appKeys.back) {
+		a.mode = modeList
+	}
+	return nil
+}
+
+func (a *App) handlePickerKey(msg tea.KeyMsg) tea.Cmd {
+	if key.Matches(msg, appKeys.back) {
+		a.mode = modeList
+	}
+	return nil
+}
+
+func (a *App) handleConfirmKey(msg tea.KeyMsg) tea.Cmd {
+	if key.Matches(msg, appKeys.back) {
+		a.mode = modeList
+	}
+	return nil
+}
+
+func (a *App) handleFormKey(msg tea.KeyMsg) tea.Cmd {
+	if key.Matches(msg, appKeys.back) {
+		a.mode = modeList
+	}
+	return nil
+}
+
 func (a *App) View() string {
 	width := a.width
 	if width <= 0 {
 		width = 120
 	}
 	var out strings.Builder
-	if a.detail != nil || a.detailLoading || a.detailError != nil {
+	if a.mode == modeDetail {
 		a.renderDetail(&out, width)
 		return out.String()
 	}
@@ -244,16 +297,16 @@ func (a *App) View() string {
 	} else {
 		fmt.Fprintln(&out, mutedStyle.Render(status))
 	}
-	fmt.Fprint(&out, mutedStyle.Render("tab/1/2 view  ↑/↓ select  enter details  r refresh  u scope  ? help  q quit"))
+	fmt.Fprint(&out, mutedStyle.Render(appKeys.listHelp()))
 	return out.String()
 }
 
 func (a *App) renderDetail(out *strings.Builder, width int) {
 	fmt.Fprintf(out, "%s\n", titleStyle.Render("Job detail: "+a.detailJob.DisplayID()))
-	if a.detailLoading {
-		fmt.Fprintln(out, "Loading job details…")
-	} else if a.detailError != nil {
+	if a.detail == nil && a.detailError != nil {
 		fmt.Fprintln(out, errorStyle.Render("Could not load job details: "+a.detailError.Error()))
+	} else if a.detail == nil {
+		fmt.Fprintln(out, "Loading job details…")
 	} else {
 		lines := make([]string, 0, 64)
 		for _, section := range registry.DetailSections() {
@@ -283,7 +336,7 @@ func (a *App) renderDetail(out *strings.Builder, width int) {
 			fmt.Fprintln(out, truncateLine(line, width))
 		}
 	}
-	fmt.Fprintln(out, mutedStyle.Render("↑/↓ or j/k scroll  pgup/pgdn page  a all fields  esc back  q quit"))
+	fmt.Fprintln(out, mutedStyle.Render(appKeys.detailHelp()))
 }
 
 func wrapCommentLine(line string, width int) []string {
@@ -528,7 +581,6 @@ func (a *App) startRecentFetch() tea.Cmd {
 
 func (a *App) startDetailFetch(job model.Job, fromRecent bool, request uint64) tea.Cmd {
 	if a.runner == nil {
-		a.detailLoading = false
 		a.detailError = fmt.Errorf("slurm runner is unavailable")
 		return nil
 	}
