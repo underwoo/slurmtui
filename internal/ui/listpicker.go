@@ -77,17 +77,18 @@ func (p listPicker) View(width, height int) string {
 	}
 	end := min(len(p.items), start+visible)
 	for i := start; i < end; i++ {
-		line := "  " + p.items[i]
+		marker := ""
 		if p.checkable {
-			marker := "[ ] "
+			marker = "[ ] "
 			if i < len(p.checked) && p.checked[i] {
 				marker = "[x] "
 			}
-			line = "  " + marker + p.items[i]
 		}
+		prefix := "  "
 		if i == p.cursor {
-			line = "> " + p.items[i]
+			prefix = "> "
 		}
+		line := prefix + marker + p.items[i]
 		line = truncateLine(line, width)
 		if i == p.cursor {
 			line = selectedStyle.Render(line)

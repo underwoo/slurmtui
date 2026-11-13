@@ -311,8 +311,14 @@ func (a *App) beginColumnPicker() {
 	for _, column := range visible {
 		visibleIDs[column.ID] = true
 	}
-	items, checked := make([]string, len(all)), make([]bool, len(all))
-	for i, column := range all {
+	ordered := append([]registry.Column(nil), visible...)
+	for _, column := range all {
+		if !visibleIDs[column.ID] {
+			ordered = append(ordered, column)
+		}
+	}
+	items, checked := make([]string, len(ordered)), make([]bool, len(ordered))
+	for i, column := range ordered {
 		items[i], checked[i] = column.ID+"  "+column.Header, visibleIDs[column.ID]
 	}
 	a.picker = newListPicker("Choose columns (J/K reorder)", items, 0)
@@ -575,6 +581,14 @@ func (a *App) handlePickerKey(msg tea.KeyMsg) tea.Cmd {
 		switch {
 		case key.Matches(msg, appKeys.back):
 			a.mode = modeList
+		case key.Matches(msg, appKeys.up):
+			a.picker.Move(-1)
+		case key.Matches(msg, appKeys.down):
+			a.picker.Move(1)
+		case key.Matches(msg, appKeys.pageUp):
+			a.picker.Move(-a.pageSize())
+		case key.Matches(msg, appKeys.pageDown):
+			a.picker.Move(a.pageSize())
 		case key.Matches(msg, appKeys.toggle):
 			a.picker.Toggle()
 		case key.Matches(msg, appKeys.moveUp):

@@ -183,10 +183,35 @@ func TestSortIsPerTabAndUsesJobIDForTies(t *testing.T) {
 func TestColumnPickerTogglesReordersAndSaves(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "slurmtui", "config.toml")
 	app := NewWithOptions(nil, Options{ConfigPath: path})
+	app.height = 24
 	app.queueJobs = []model.Job{{ID: 1}}
 	app.beginColumnPicker()
 	app.Update(tea.KeyMsg{Type: tea.KeySpace}) // hide JobID
-	app.picker.Move(1)                         // Name
+	app.Update(tea.KeyMsg{Type: tea.KeyDown})  // Name
+	if app.picker.Cursor() != 1 {
+		t.Fatalf("down key did not move picker cursor: %d", app.picker.Cursor())
+	}
+	app.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if app.picker.Cursor() != 0 {
+		t.Fatalf("up key did not move picker cursor: %d", app.picker.Cursor())
+	}
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	if app.picker.Cursor() != 1 {
+		t.Fatalf("j key did not move picker cursor: %d", app.picker.Cursor())
+	}
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	if app.picker.Cursor() != 0 {
+		t.Fatalf("k key did not move picker cursor: %d", app.picker.Cursor())
+	}
+	app.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if app.picker.Cursor() != len(app.picker.items)-1 {
+		t.Fatalf("page down did not move picker cursor: %d", app.picker.Cursor())
+	}
+	app.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	if app.picker.Cursor() != 0 {
+		t.Fatalf("page up did not move picker cursor: %d", app.picker.Cursor())
+	}
+	app.Update(tea.KeyMsg{Type: tea.KeyDown})
 	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'J'}})
 	if app.picker.Cursor() != 2 {
 		t.Fatalf("J did not reorder selected item down: cursor=%d", app.picker.Cursor())
@@ -219,6 +244,32 @@ func TestColumnPickerTogglesReordersAndSaves(t *testing.T) {
 	}
 	if fmt.Sprint(settings.QueueColumns) != "[name]" || len(settings.RecentColumns) == 0 {
 		t.Fatalf("saved settings = %+v", settings)
+	}
+}
+
+func TestColumnPickerReopensInConfiguredOrder(t *testing.T) {
+	app := NewWithOptions(nil, Options{QueueColumns: []string{"name", "job_id"}})
+	app.beginColumnPicker()
+	items := app.picker.Items()
+	if !strings.HasPrefix(items[0], "name  ") || !strings.HasPrefix(items[1], "job_id  ") {
+		t.Fatalf("picker did not preserve configured order: %v", items[:2])
+	}
+}
+
+func TestHidingColumnRecomputesActiveFilter(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "slurmtui", "config.toml")
+	app := NewWithOptions(nil, Options{ConfigPath: path})
+	app.queueJobs = []model.Job{{ID: 1, Name: "secret-job"}, {ID: 2, Name: "ordinary"}}
+	app.applyFilter("secret")
+	if len(app.visibleQueue()) != 1 {
+		t.Fatalf("initial filter returned %d jobs, want 1", len(app.visibleQueue()))
+	}
+	app.beginColumnPicker()
+	app.Update(tea.KeyMsg{Type: tea.KeyDown}) // Name
+	app.Update(tea.KeyMsg{Type: tea.KeySpace})
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	if len(app.visibleQueue()) != 0 {
+		t.Fatalf("filter still matched text in hidden Name column: %+v", app.visibleQueue())
 	}
 }
 
