@@ -774,8 +774,8 @@ func (a *App) View() string {
 		a.showHelp = false
 		background := a.View()
 		a.showHelp = true
-		overlay, panelWidth := a.renderHelpOverlay(width, a.height)
-		return fitOutput(compositeOverlay(background, overlay, width, panelWidth), width)
+		panel, panelWidth, panelTop := a.renderHelpOverlay(width, a.height)
+		return fitOutput(compositeOverlay(background, panel, width, panelWidth, panelTop), width)
 	}
 	var out strings.Builder
 	if a.mode == modeDetail {

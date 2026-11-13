@@ -69,6 +69,18 @@ func TestHelpOverlayConsumesKeysAndScrolls(t *testing.T) {
 	}
 }
 
+func TestCompositeOverlayLeavesRowsOutsidePanelUntouched(t *testing.T) {
+	background := "top\nbackground\nbottom"
+	got := compositeOverlay(background, "x", 9, 3, 1)
+	lines := strings.Split(got, "\n")
+	if lines[0] != "top" || lines[2] != "bottom" {
+		t.Fatalf("rows outside panel were modified: %#v", lines)
+	}
+	if strings.HasSuffix(lines[0], " ") || strings.HasSuffix(lines[2], " ") {
+		t.Fatalf("background rows gained trailing padding: %#v", lines)
+	}
+}
+
 func TestResponsiveViewGoldens(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 	clock := func() time.Time { return time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC) }

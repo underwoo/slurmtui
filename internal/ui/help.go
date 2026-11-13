@@ -43,7 +43,7 @@ func (a *App) helpGroups() []helpGroup {
 	}
 }
 
-func (a *App) renderHelpOverlay(width, height int) (string, int) {
+func (a *App) renderHelpOverlay(width, height int) (string, int, int) {
 	if height <= 0 {
 		height = 24
 	}
@@ -75,26 +75,34 @@ func (a *App) renderHelpOverlay(width, height int) (string, int) {
 	panel := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		Padding(0, 1).
-		Width(innerWidth).
+		Width(innerWidth + 2).
 		Render(strings.Join(content, "\n"))
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, panel), lipgloss.Width(panel)
+	panelHeight := lipgloss.Height(panel)
+	return panel, lipgloss.Width(panel), max(0, (height-panelHeight)/2)
 }
 
-func compositeOverlay(background, overlay string, width, panelWidth int) string {
+func compositeOverlay(background, panel string, width, panelWidth, panelTop int) string {
 	baseLines := strings.Split(background, "\n")
-	overlayLines := strings.Split(overlay, "\n")
+	panelLines := strings.Split(panel, "\n")
 	left := max(0, (width-panelWidth)/2)
 	right := left + panelWidth
-	lines := make([]string, len(overlayLines))
-	for i, overlayLine := range overlayLines {
-		baseLine := ""
-		if i < len(baseLines) {
-			baseLine = baseLines[i]
+	lines := append([]string(nil), baseLines...)
+	for panelRow, panelLine := range panelLines {
+		row := panelTop + panelRow
+		if row >= len(lines) {
+			lines = append(lines, make([]string, row-len(lines)+1)...)
 		}
-		if missing := width - lipgloss.Width(baseLine); missing > 0 {
-			baseLine += strings.Repeat(" ", missing)
+		baseLine := lines[row]
+		baseWidth := lipgloss.Width(baseLine)
+		prefix := ansi.Cut(baseLine, 0, left)
+		if baseWidth < left {
+			prefix += strings.Repeat(" ", left-baseWidth)
 		}
-		lines[i] = ansi.Cut(baseLine, 0, left) + ansi.Cut(overlayLine, left, right) + ansi.Cut(baseLine, right, width)
+		suffix := ""
+		if baseWidth > right {
+			suffix = strings.TrimRight(ansi.Cut(baseLine, right, width), " ")
+		}
+		lines[row] = prefix + panelLine + suffix
 	}
 	return strings.Join(lines, "\n")
 }
