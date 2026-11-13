@@ -12,6 +12,9 @@ type appKeyMap struct {
 	filter    key.Binding
 	sort      key.Binding
 	columns   key.Binding
+	cancel    key.Binding
+	hold      key.Binding
+	requeue   key.Binding
 	toggle    key.Binding
 	moveUp    key.Binding
 	moveDown  key.Binding
@@ -37,6 +40,9 @@ var appKeys = appKeyMap{
 	filter:    key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter")),
 	sort:      key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sort")),
 	columns:   key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "columns")),
+	cancel:    key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "cancel")),
+	hold:      key.NewBinding(key.WithKeys("h"), key.WithHelp("h", "hold/release")),
+	requeue:   key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "requeue")),
 	toggle:    key.NewBinding(key.WithKeys(" ")),
 	moveUp:    key.NewBinding(key.WithKeys("K")),
 	moveDown:  key.NewBinding(key.WithKeys("J")),
@@ -66,6 +72,9 @@ func (appKeyMap) listHelp() string {
 		appKeys.filter.Help().Key + " " + appKeys.filter.Help().Desc,
 		appKeys.sort.Help().Key + " " + appKeys.sort.Help().Desc,
 		appKeys.columns.Help().Key + " " + appKeys.columns.Help().Desc,
+		appKeys.cancel.Help().Key + " " + appKeys.cancel.Help().Desc,
+		appKeys.hold.Help().Key + " " + appKeys.hold.Help().Desc,
+		appKeys.requeue.Help().Key + " " + appKeys.requeue.Help().Desc,
 		appKeys.help.Help().Key + " " + appKeys.help.Help().Desc,
 		appKeys.quit.Help().Key + " " + appKeys.quit.Help().Desc,
 	}, "  ")
@@ -76,6 +85,9 @@ func (appKeyMap) detailHelp() string {
 		appKeys.scroll.Help().Key + " " + appKeys.scroll.Help().Desc,
 		appKeys.pageUp.Help().Key + " " + appKeys.pageUp.Help().Desc,
 		appKeys.allFields.Help().Key + " " + appKeys.allFields.Help().Desc,
+		appKeys.cancel.Help().Key + " " + appKeys.cancel.Help().Desc,
+		appKeys.hold.Help().Key + " " + appKeys.hold.Help().Desc,
+		appKeys.requeue.Help().Key + " " + appKeys.requeue.Help().Desc,
 		appKeys.back.Help().Key + " " + appKeys.back.Help().Desc,
 		appKeys.quit.Help().Key + " " + appKeys.quit.Help().Desc,
 	}, "  ")

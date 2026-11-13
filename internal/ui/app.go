@@ -69,6 +69,10 @@ type App struct {
 	detailScroll   int
 	showAllFields  bool
 	detailRequest  uint64
+	confirmAction  jobAction
+	confirmJob     model.Job
+	confirmReturn  mode
+	actionStatus   string
 	filterInput    textinput.Model
 	filterPattern  string
 	filterRegex    *regexp.Regexp
@@ -155,6 +159,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			detail := msg.detail
 			a.detail = &detail
 		}
+	case actionResult:
+		if msg.err != nil {
+			a.actionStatus = "action failed: " + msg.err.Error()
+			break
+		}
+		a.actionStatus = msg.action.pastTense() + " " + msg.job.DisplayID()
+		return a, tea.Batch(a.startQueueFetch(), a.startRecentFetch())
 	}
 	return a, nil
 }
@@ -225,12 +236,24 @@ func (a *App) handleListKey(msg tea.KeyMsg) tea.Cmd {
 			a.detailRequest++
 			return a.startDetailFetch(a.detailJob, a.tab == registry.RecentTab, a.detailRequest)
 		}
+	case key.Matches(msg, appKeys.cancel):
+		a.beginActionFromSelection(actionCancel)
+	case key.Matches(msg, appKeys.hold):
+		a.beginActionFromSelection(actionForHold(a.selectedJob()))
+	case key.Matches(msg, appKeys.requeue):
+		a.beginActionFromSelection(actionRequeue)
 	}
 	return nil
 }
 
 func (a *App) handleDetailKey(msg tea.KeyMsg) tea.Cmd {
 	switch {
+	case key.Matches(msg, appKeys.cancel):
+		a.beginJobAction(actionCancel, a.detailJob, modeDetail)
+	case key.Matches(msg, appKeys.hold):
+		a.beginJobAction(actionForHold(a.detailJob), a.detailJob, modeDetail)
+	case key.Matches(msg, appKeys.requeue):
+		a.beginJobAction(actionRequeue, a.detailJob, modeDetail)
 	case key.Matches(msg, appKeys.back):
 		a.mode = modeList
 		a.detail, a.detailError = nil, nil
@@ -618,9 +641,13 @@ func (a *App) handlePickerKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 func (a *App) handleConfirmKey(msg tea.KeyMsg) tea.Cmd {
-	if key.Matches(msg, appKeys.back) {
-		a.mode = modeList
+	if msg.Type == tea.KeyRunes && string(msg.Runes) == "y" {
+		a.mode = a.confirmReturn
+		a.actionStatus = a.confirmAction.presentTense() + " " + a.confirmJob.DisplayID() + "…"
+		return a.runJobAction(a.confirmAction, a.confirmJob)
 	}
+	a.mode = a.confirmReturn
+	a.actionStatus = a.confirmAction.presentTense() + " " + a.confirmJob.DisplayID() + " aborted"
 	return nil
 }
 
@@ -641,6 +668,10 @@ func (a *App) View() string {
 		a.renderDetail(&out, width)
 		return out.String()
 	}
+	if a.mode == modeConfirm {
+		a.renderConfirm(&out)
+		return out.String()
+	}
 	if a.mode == modePicker {
 		a.renderPicker(&out, width)
 		return out.String()
@@ -658,7 +689,7 @@ func (a *App) View() string {
 	fmt.Fprintf(&out, "%s  %s\n", queueTab, recentTab)
 
 	if a.showHelp {
-		fmt.Fprintln(&out, "tab / 1 / 2 switch views   ↑/↓ or j/k select   enter details   / filter   s sort   c columns   r refresh   u toggle scope   ? help   q quit")
+		fmt.Fprintln(&out, "tab / 1 / 2 switch views   ↑/↓ or j/k select   enter details   / filter   s sort   c columns   x cancel   h hold/release   R requeue   r refresh   u scope   ? help   q quit")
 	} else {
 		columns := a.displayedColumns()
 		widths := fitWidths(columns, width)
@@ -705,7 +736,10 @@ func (a *App) View() string {
 	if a.columnWarning != "" {
 		status += "  " + a.columnWarning
 	}
-	if sourceErr != nil || otherErr != nil || a.filterError != nil || a.columnWarning != "" {
+	if a.actionStatus != "" {
+		status += "  " + a.actionStatus
+	}
+	if sourceErr != nil || otherErr != nil || a.filterError != nil || a.columnWarning != "" || strings.HasPrefix(a.actionStatus, "action failed:") {
 		fmt.Fprintln(&out, errorStyle.Render(status))
 	} else {
 		fmt.Fprintln(&out, mutedStyle.Render(status))
@@ -748,6 +782,9 @@ func (a *App) renderDetail(out *strings.Builder, width int) {
 		for _, line := range lines[a.detailScroll:end] {
 			fmt.Fprintln(out, truncateLine(line, width))
 		}
+	}
+	if a.actionStatus != "" {
+		fmt.Fprintln(out, mutedStyle.Render(a.actionStatus))
 	}
 	fmt.Fprintln(out, mutedStyle.Render(appKeys.detailHelp()))
 }

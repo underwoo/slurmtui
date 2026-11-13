@@ -71,6 +71,9 @@ The **Queue** view shows active jobs. **Recent** shows jobs that completed withi
 | `/` | Open the live regular-expression filter (Enter keeps it; Esc clears it) |
 | `s` | Sort by a visible column; selecting the current column flips direction |
 | `c` | Choose visible columns; use Space to toggle, `J`/`K` to reorder, and `w` to save |
+| `x` | Cancel the selected job after confirmation |
+| `h` | Hold a pending job, or release a user/admin-held job, after confirmation |
+| `R` | Requeue the selected job after confirmation |
 | `Esc` | Return from job details to the list, or clear an active filter |
 | `a` | Show or hide the raw All fields section in job details |
 | `r` | Refresh the job lists |
