@@ -49,6 +49,80 @@ func TestModeKeysDoNotLeak(t *testing.T) {
 	}
 }
 
+func TestFilterSmartCase(t *testing.T) {
+	insensitive, err := compileFilter("alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !insensitive.MatchString("ALPHA") {
+		t.Fatal("lowercase pattern should match case-insensitively")
+	}
+	sensitive, err := compileFilter("Alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sensitive.MatchString("alpha") || !sensitive.MatchString("Alpha") {
+		t.Fatal("pattern with uppercase letter should match case-sensitively")
+	}
+	jobs := []model.Job{{ID: 1, Name: "ALPHA"}}
+	if got := filterJobs(jobs, registry.VisibleColumns(registry.QueueTab), insensitive, time.Time{}, time.UTC); len(got) != 1 {
+		t.Fatalf("smart-case filter matched %d rows, want 1", len(got))
+	}
+}
+
+func TestFilterInputAppliesLiveAndEscapeClears(t *testing.T) {
+	app := NewWithOptions(nil, Options{Scope: slurm.ScopeMe})
+	app.queueJobs = []model.Job{{ID: 1, Name: "alpha"}, {ID: 2, Name: "beta"}}
+	app.beginFilter()
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	if app.mode != modeFilter || app.filterPattern != "a" || len(app.visibleQueue()) != 2 {
+		t.Fatalf("filter did not apply live: mode=%v pattern=%q jobs=%+v", app.mode, app.filterPattern, app.visibleQueue())
+	}
+	app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if app.mode != modeList || app.filterPattern != "a" {
+		t.Fatalf("enter did not keep filter: mode=%v pattern=%q", app.mode, app.filterPattern)
+	}
+	app.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if app.filterPattern != "" || app.filterRegex != nil || len(app.visibleQueue()) != 2 {
+		t.Fatalf("escape did not clear filter: pattern=%q jobs=%+v", app.filterPattern, app.visibleQueue())
+	}
+}
+
+func TestFilterInvalidPatternKeepsLastValidFilter(t *testing.T) {
+	app := NewWithOptions(nil, Options{Scope: slurm.ScopeMe})
+	app.queueJobs = []model.Job{{ID: 1, Name: "alpha"}, {ID: 2, Name: "beta"}}
+	app.applyFilter("alpha")
+	lastValid := app.filterRegex
+	app.applyFilter("[")
+	if app.filterError == nil {
+		t.Fatal("invalid pattern produced no error")
+	}
+	if app.filterRegex != lastValid || len(app.visibleQueue()) != 1 || app.visibleQueue()[0].ID != 1 {
+		t.Fatalf("invalid pattern changed last valid results: regex=%p jobs=%+v", app.filterRegex, app.visibleQueue())
+	}
+}
+
+func TestFilterNoMatchesAndSurvivesRefresh(t *testing.T) {
+	app := NewWithOptions(nil, Options{Scope: slurm.ScopeMe})
+	app.queueJobs = []model.Job{{ID: 1, Name: "alpha"}, {ID: 2, Name: "worker-two"}, {ID: 3, Name: "worker-three"}}
+	app.applyFilter("missing")
+	if len(app.visibleQueue()) != 0 {
+		t.Fatalf("no-match filter returned jobs: %+v", app.visibleQueue())
+	}
+	if !strings.Contains(app.View(), "0 of 3") {
+		t.Fatalf("filter status omitted no-match count:\n%s", app.View())
+	}
+	app.applyFilter("worker")
+	app.queueCursor = 1 // select job 3 in the filtered set
+	app.Update(queueResult{scope: slurm.ScopeMe, result: slurm.ListResult{Jobs: []model.Job{{ID: 1, Name: "alpha"}, {ID: 3, Name: "worker-three"}, {ID: 2, Name: "worker-two"}}}})
+	if app.filterPattern != "worker" || len(app.visibleQueue()) != 2 {
+		t.Fatalf("filter did not survive refresh: pattern=%q jobs=%+v", app.filterPattern, app.visibleQueue())
+	}
+	if got := app.visibleQueue()[app.queueCursor].ID; got != 3 {
+		t.Fatalf("selection after refresh = %d, want 3", got)
+	}
+}
+
 func TestRecentViewGolden(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 	location := time.FixedZone("EST", -5*60*60)
@@ -309,6 +383,24 @@ func BenchmarkRender20k(b *testing.B) {
 	b.ResetTimer()
 	for range b.N {
 		_ = app.View()
+	}
+}
+
+func BenchmarkFilter20k(b *testing.B) {
+	clock := time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
+	jobs := make([]model.Job, 20_000)
+	for i := range jobs {
+		jobs[i] = model.Job{ID: int64(i + 1), Name: "synthetic-job", UserName: "user", Account: "account", Partition: "compute", QOS: "normal", States: []model.State{model.StateRunning}, NodeCount: model.NoValNumber{Set: true, Number: 1}, NodeList: "node-001", StartTime: model.NoValNumber{Set: true, Number: clock.Unix() - 120}, TimeLimit: model.NoValNumber{Set: true, Number: 60}}
+	}
+	columns := registry.VisibleColumns(registry.QueueTab)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		pattern, err := compileFilter("zzzz-not-found")
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = filterJobs(jobs, columns, pattern, clock, time.UTC)
 	}
 }
 

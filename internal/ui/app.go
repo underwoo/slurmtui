@@ -3,10 +3,12 @@ package ui
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -35,26 +37,32 @@ type App struct {
 	options Options
 	clock   func() time.Time
 
-	width, height int
-	mode          mode
-	showHelp      bool
-	tab           registry.Tab
-	scope         slurm.Scope
-	queueJobs     []model.Job
-	recentJobs    []model.Job
-	queueCursor   int
-	recentCursor  int
-	queueLoading  bool
-	recentLoading bool
-	queueError    error
-	recentError   error
-	lastRefresh   time.Time
-	detail        *model.JobDetail
-	detailJob     model.Job
-	detailError   error
-	detailScroll  int
-	showAllFields bool
-	detailRequest uint64
+	width, height  int
+	mode           mode
+	showHelp       bool
+	tab            registry.Tab
+	scope          slurm.Scope
+	queueJobs      []model.Job
+	recentJobs     []model.Job
+	filteredQueue  []model.Job
+	filteredRecent []model.Job
+	queueCursor    int
+	recentCursor   int
+	queueLoading   bool
+	recentLoading  bool
+	queueError     error
+	recentError    error
+	lastRefresh    time.Time
+	detail         *model.JobDetail
+	detailJob      model.Job
+	detailError    error
+	detailScroll   int
+	showAllFields  bool
+	detailRequest  uint64
+	filterInput    textinput.Model
+	filterPattern  string
+	filterRegex    *regexp.Regexp
+	filterError    error
 }
 
 func New() tea.Model {
@@ -78,7 +86,11 @@ func NewWithOptions(runner slurm.Runner, options Options) *App {
 	if options.Location == nil {
 		options.Location = time.Local
 	}
-	return &App{runner: runner, options: options, clock: clock, tab: registry.QueueTab, scope: options.Scope}
+	input := textinput.New()
+	input.Prompt = "/"
+	input.Width = 80
+	input.CharLimit = 256
+	return &App{runner: runner, options: options, clock: clock, tab: registry.QueueTab, scope: options.Scope, filterInput: input}
 }
 
 func (a *App) Init() tea.Cmd {
@@ -89,6 +101,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
+		a.filterInput.Width = max(1, msg.Width-35)
 	case tea.KeyMsg:
 		return a, a.handleKey(msg)
 	case tickMsg:
@@ -100,8 +113,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.queueError = msg.err
 		if msg.err == nil {
-			a.queueCursor = restoreCursor(a.queueJobs, msg.result.Jobs, a.queueCursor)
+			oldJobs := a.visibleQueue()
 			a.queueJobs = msg.result.Jobs
+			a.recomputeQueueFilter()
+			a.queueCursor = restoreCursor(oldJobs, a.visibleQueue(), a.queueCursor)
 			a.lastRefresh = msg.at
 		}
 	case recentResult:
@@ -111,8 +126,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.recentError = msg.err
 		if msg.err == nil {
-			a.recentCursor = restoreCursor(a.recentJobs, msg.result.Jobs, a.recentCursor)
+			oldJobs := a.visibleRecent()
 			a.recentJobs = msg.result.Jobs
+			a.recomputeRecentFilter()
+			a.recentCursor = restoreCursor(oldJobs, a.visibleRecent(), a.recentCursor)
 			a.lastRefresh = msg.at
 		}
 	case detailResult:
@@ -151,6 +168,12 @@ func (a *App) handleListKey(msg tea.KeyMsg) tea.Cmd {
 		return tea.Quit
 	case key.Matches(msg, appKeys.help):
 		a.showHelp = !a.showHelp
+	case key.Matches(msg, appKeys.filter):
+		return a.beginFilter()
+	case key.Matches(msg, appKeys.back):
+		if a.hasFilterDraft() {
+			a.clearFilter()
+		}
 	case key.Matches(msg, appKeys.tab):
 		a.toggleTab()
 	case key.Matches(msg, appKeys.queue):
@@ -214,10 +237,110 @@ func (a *App) handleDetailKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 func (a *App) handleFilterKey(msg tea.KeyMsg) tea.Cmd {
-	if key.Matches(msg, appKeys.back) {
+	switch {
+	case key.Matches(msg, appKeys.back):
 		a.mode = modeList
+		a.clearFilter()
+		return nil
+	case key.Matches(msg, appKeys.enter):
+		a.mode = modeList
+		a.filterInput.Blur()
+		return nil
+	default:
+		before := a.filterInput.Value()
+		var cmd tea.Cmd
+		a.filterInput, cmd = a.filterInput.Update(msg)
+		if a.filterInput.Value() != before {
+			a.applyFilter(a.filterInput.Value())
+		}
+		return cmd
 	}
-	return nil
+}
+
+func (a *App) beginFilter() tea.Cmd {
+	if a.filterError == nil {
+		a.filterInput.SetValue(a.filterPattern)
+	}
+	width := a.width
+	if width <= 0 {
+		width = 120
+	}
+	a.filterInput.Width = max(1, width-35)
+	a.mode = modeFilter
+	return a.filterInput.Focus()
+}
+
+func (a *App) applyFilter(pattern string) {
+	compiled, err := compileFilter(pattern)
+	if err != nil {
+		a.filterError = err
+		return
+	}
+	oldQueue, oldRecent := a.visibleQueue(), a.visibleRecent()
+	a.filterPattern = pattern
+	a.filterRegex = compiled
+	a.filterError = nil
+	a.recomputeQueueFilter()
+	a.recomputeRecentFilter()
+	a.queueCursor = restoreCursor(oldQueue, a.visibleQueue(), a.queueCursor)
+	a.recentCursor = restoreCursor(oldRecent, a.visibleRecent(), a.recentCursor)
+}
+
+func (a *App) clearFilter() {
+	oldQueue, oldRecent := a.visibleQueue(), a.visibleRecent()
+	a.filterPattern = ""
+	a.filterRegex = nil
+	a.filterError = nil
+	a.filterInput.SetValue("")
+	a.filterInput.Blur()
+	a.filteredQueue, a.filteredRecent = nil, nil
+	a.queueCursor = restoreCursor(oldQueue, a.queueJobs, a.queueCursor)
+	a.recentCursor = restoreCursor(oldRecent, a.recentJobs, a.recentCursor)
+}
+
+func (a *App) hasFilterDraft() bool {
+	return a.filterRegex != nil || a.filterError != nil || a.filterInput.Value() != ""
+}
+
+func (a *App) filterStatusVisible() bool {
+	return a.mode == modeFilter || a.filterRegex != nil || a.filterError != nil
+}
+
+func (a *App) allActiveJobs() []model.Job {
+	if a.tab == registry.RecentTab {
+		return a.recentJobs
+	}
+	return a.queueJobs
+}
+
+func (a *App) visibleQueue() []model.Job {
+	if a.filterRegex == nil {
+		return a.queueJobs
+	}
+	return a.filteredQueue
+}
+
+func (a *App) visibleRecent() []model.Job {
+	if a.filterRegex == nil {
+		return a.recentJobs
+	}
+	return a.filteredRecent
+}
+
+func (a *App) recomputeQueueFilter() {
+	if a.filterRegex == nil {
+		a.filteredQueue = nil
+		return
+	}
+	a.filteredQueue = filterJobs(a.queueJobs, registry.VisibleColumns(registry.QueueTab), a.filterRegex, a.clock(), a.options.Location)
+}
+
+func (a *App) recomputeRecentFilter() {
+	if a.filterRegex == nil {
+		a.filteredRecent = nil
+		return
+	}
+	a.filteredRecent = filterJobs(a.recentJobs, registry.VisibleColumns(registry.RecentTab), a.filterRegex, a.clock(), a.options.Location)
 }
 
 func (a *App) handlePickerKey(msg tea.KeyMsg) tea.Cmd {
@@ -276,6 +399,19 @@ func (a *App) View() string {
 	}
 
 	status := fmt.Sprintf("%s: %d jobs", tabName, len(jobs))
+	if a.filterStatusVisible() {
+		allJobs := a.allActiveJobs()
+		pattern := a.filterPattern
+		if a.mode == modeFilter || a.filterError != nil {
+			pattern = a.filterInput.Value()
+		}
+		if a.mode == modeFilter {
+			status = a.filterInput.View()
+		} else {
+			status = fmt.Sprintf("%s  /%s", tabName, pattern)
+		}
+		status += fmt.Sprintf("  %d of %d", len(jobs), len(allJobs))
+	}
 	if loading {
 		status += "  refreshing…"
 	}
@@ -292,7 +428,10 @@ func (a *App) View() string {
 	if otherErr != nil {
 		status += "  " + otherName + ": " + otherErr.Error()
 	}
-	if sourceErr != nil || otherErr != nil {
+	if a.filterError != nil {
+		status += "  " + a.filterError.Error()
+	}
+	if sourceErr != nil || otherErr != nil || a.filterError != nil {
 		fmt.Fprintln(&out, errorStyle.Render(status))
 	} else {
 		fmt.Fprintln(&out, mutedStyle.Render(status))
@@ -491,16 +630,16 @@ func sum(values []int) int {
 
 func (a *App) activeData() (string, []model.Job, int, bool, error) {
 	if a.tab == registry.RecentTab {
-		return "Recent", a.recentJobs, a.recentCursor, a.recentLoading, a.recentError
+		return "Recent", a.visibleRecent(), a.recentCursor, a.recentLoading, a.recentError
 	}
-	return "Queue", a.queueJobs, a.queueCursor, a.queueLoading, a.queueError
+	return "Queue", a.visibleQueue(), a.queueCursor, a.queueLoading, a.queueError
 }
 
 func (a *App) otherData() (string, []model.Job, int, bool, error) {
 	if a.tab == registry.RecentTab {
-		return "Queue", a.queueJobs, a.queueCursor, a.queueLoading, a.queueError
+		return "Queue", a.visibleQueue(), a.queueCursor, a.queueLoading, a.queueError
 	}
-	return "Recent", a.recentJobs, a.recentCursor, a.recentLoading, a.recentError
+	return "Recent", a.visibleRecent(), a.recentCursor, a.recentLoading, a.recentError
 }
 
 func (a *App) toggleTab() {
@@ -512,10 +651,10 @@ func (a *App) toggleTab() {
 }
 
 func (a *App) moveCursor(delta int) {
-	jobs := a.queueJobs
+	jobs := a.visibleQueue()
 	cursor := &a.queueCursor
 	if a.tab == registry.RecentTab {
-		jobs, cursor = a.recentJobs, &a.recentCursor
+		jobs, cursor = a.visibleRecent(), &a.recentCursor
 	}
 	if len(jobs) == 0 {
 		*cursor = 0
