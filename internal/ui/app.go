@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"slurmtui/internal/config"
 	"slurmtui/internal/model"
 	"slurmtui/internal/registry"
 	"slurmtui/internal/slurm"
@@ -31,6 +32,9 @@ type Options struct {
 	Scope           slurm.Scope
 	Clock           func() time.Time
 	Location        *time.Location
+	ConfigPath      string
+	QueueColumns    []string
+	RecentColumns   []string
 }
 
 type App struct {
@@ -50,6 +54,8 @@ type App struct {
 	queueSort      columnSort
 	recentSort     columnSort
 	picker         listPicker
+	pickerColumns  bool
+	columnWarning  string
 	queueCursor    int
 	recentCursor   int
 	queueLoading   bool
@@ -94,7 +100,9 @@ func NewWithOptions(runner slurm.Runner, options Options) *App {
 	input.Prompt = "/"
 	input.Width = 80
 	input.CharLimit = 256
-	return &App{runner: runner, options: options, clock: clock, tab: registry.QueueTab, scope: options.Scope, filterInput: input}
+	app := &App{runner: runner, options: options, clock: clock, tab: registry.QueueTab, scope: options.Scope, filterInput: input}
+	app.refreshColumnWarnings()
+	return app
 }
 
 func (a *App) Init() tea.Cmd {
@@ -119,7 +127,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			oldJobs := a.visibleQueue()
 			a.queueJobs = msg.result.Jobs
-			sortJobs(a.queueJobs, registry.VisibleColumns(registry.QueueTab), a.queueSort)
+			sortJobs(a.queueJobs, a.columnsFor(registry.QueueTab), a.queueSort)
 			a.recomputeQueueFilter()
 			a.queueCursor = restoreCursor(oldJobs, a.visibleQueue(), a.queueCursor)
 			a.lastRefresh = msg.at
@@ -133,7 +141,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			oldJobs := a.visibleRecent()
 			a.recentJobs = msg.result.Jobs
-			sortJobs(a.recentJobs, registry.VisibleColumns(registry.RecentTab), a.recentSort)
+			sortJobs(a.recentJobs, a.columnsFor(registry.RecentTab), a.recentSort)
 			a.recomputeRecentFilter()
 			a.recentCursor = restoreCursor(oldJobs, a.visibleRecent(), a.recentCursor)
 			a.lastRefresh = msg.at
@@ -178,6 +186,8 @@ func (a *App) handleListKey(msg tea.KeyMsg) tea.Cmd {
 		return a.beginFilter()
 	case key.Matches(msg, appKeys.sort):
 		a.beginSort()
+	case key.Matches(msg, appKeys.columns):
+		a.beginColumnPicker()
 	case key.Matches(msg, appKeys.back):
 		if a.hasFilterDraft() {
 			a.clearFilter()
@@ -279,7 +289,8 @@ func (a *App) beginFilter() tea.Cmd {
 }
 
 func (a *App) beginSort() {
-	columns := registry.VisibleColumns(a.tab)
+	a.pickerColumns = false
+	columns := a.columnsFor(a.tab)
 	items := make([]string, len(columns))
 	cursor := 0
 	state := a.activeSort()
@@ -293,6 +304,117 @@ func (a *App) beginSort() {
 	a.mode = modePicker
 }
 
+func (a *App) beginColumnPicker() {
+	all := registry.VisibleColumns(a.tab)
+	visible := a.columnsFor(a.tab)
+	visibleIDs := make(map[string]bool, len(visible))
+	for _, column := range visible {
+		visibleIDs[column.ID] = true
+	}
+	ordered := append([]registry.Column(nil), visible...)
+	for _, column := range all {
+		if !visibleIDs[column.ID] {
+			ordered = append(ordered, column)
+		}
+	}
+	items, checked := make([]string, len(ordered)), make([]bool, len(ordered))
+	for i, column := range ordered {
+		items[i], checked[i] = column.ID+"  "+column.Header, visibleIDs[column.ID]
+	}
+	a.picker = newListPicker("Choose columns (J/K reorder)", items, 0)
+	a.picker.SetChecked(checked)
+	a.pickerColumns = true
+	a.mode = modePicker
+}
+
+func (a *App) columnsFor(tab registry.Tab) []registry.Column {
+	ids := a.options.QueueColumns
+	if tab == registry.RecentTab {
+		ids = a.options.RecentColumns
+	}
+	columns, _ := registry.ColumnsForIDs(tab, ids)
+	return columns
+}
+
+func (a *App) refreshColumnWarnings() {
+	a.columnWarning = ""
+	var unknown []string
+	for _, tab := range []registry.Tab{registry.QueueTab, registry.RecentTab} {
+		ids := a.options.QueueColumns
+		if tab == registry.RecentTab {
+			ids = a.options.RecentColumns
+		}
+		_, skipped := registry.ColumnsForIDs(tab, ids)
+		unknown = append(unknown, skipped...)
+	}
+	if len(unknown) != 0 {
+		a.columnWarning = "unknown column IDs skipped: " + strings.Join(uniqueStrings(unknown), ", ")
+	}
+}
+
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if !seen[value] {
+			seen[value] = true
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func (a *App) savePickedColumns() {
+	oldQueue, oldRecent := append([]model.Job(nil), a.visibleQueue()...), append([]model.Job(nil), a.visibleRecent()...)
+	items, checked := a.picker.Items(), a.picker.Checked()
+	ids := make([]string, 0, len(items))
+	for i, item := range items {
+		if i < len(checked) && checked[i] {
+			id, _, _ := strings.Cut(item, "  ")
+			ids = append(ids, id)
+		}
+	}
+	queue, recent := a.options.QueueColumns, a.options.RecentColumns
+	if a.tab == registry.QueueTab {
+		queue = ids
+	} else {
+		recent = ids
+	}
+	if queue == nil {
+		queue = columnIDs(registry.QueueTab)
+	}
+	if recent == nil {
+		recent = columnIDs(registry.RecentTab)
+	}
+	if err := config.SaveColumns(a.options.ConfigPath, queue, recent); err != nil {
+		a.columnWarning = "could not save columns: " + err.Error()
+		a.mode = modeList
+		return
+	}
+	if a.tab == registry.QueueTab {
+		a.options.QueueColumns = ids
+	} else {
+		a.options.RecentColumns = ids
+	}
+	a.refreshColumnWarnings()
+	sortJobs(a.queueJobs, a.columnsFor(registry.QueueTab), a.queueSort)
+	sortJobs(a.recentJobs, a.columnsFor(registry.RecentTab), a.recentSort)
+	a.recomputeQueueFilter()
+	a.recomputeRecentFilter()
+	a.queueCursor = restoreCursor(oldQueue, a.visibleQueue(), a.queueCursor)
+	a.recentCursor = restoreCursor(oldRecent, a.visibleRecent(), a.recentCursor)
+	a.mode = modeList
+}
+
+func columnIDs(tab registry.Tab) []string {
+	columns := registry.VisibleColumns(tab)
+	ids := make([]string, len(columns))
+	for i, column := range columns {
+		ids[i] = column.ID
+	}
+	return ids
+}
+
 func (a *App) activeSort() *columnSort {
 	if a.tab == registry.RecentTab {
 		return &a.recentSort
@@ -301,7 +423,7 @@ func (a *App) activeSort() *columnSort {
 }
 
 func (a *App) applyPickedSort() {
-	columns := registry.VisibleColumns(a.tab)
+	columns := a.columnsFor(a.tab)
 	index := a.picker.Cursor()
 	if index < 0 || index >= len(columns) {
 		a.mode = modeList
@@ -342,6 +464,14 @@ func sortJobs(jobs []model.Job, columns []registry.Column, state columnSort) {
 		}
 	}
 	if selected.Less == nil {
+		for _, column := range registry.DefaultColumns() {
+			if column.ID == state.columnID {
+				selected = column
+				break
+			}
+		}
+	}
+	if selected.Less == nil {
 		return
 	}
 	sort.SliceStable(jobs, func(i, j int) bool {
@@ -366,7 +496,11 @@ func (a *App) renderPicker(out *strings.Builder, width int) {
 	}
 	fmt.Fprintf(out, "%s  %s\n", queueTab, recentTab)
 	fmt.Fprintln(out, a.picker.View(width, a.height))
-	fmt.Fprint(out, mutedStyle.Render("↑/↓ or j/k select  pgup/pgdn page  enter sort  esc cancel"))
+	if a.pickerColumns {
+		fmt.Fprint(out, mutedStyle.Render("space toggle  J/K reorder  w save  esc cancel"))
+	} else {
+		fmt.Fprint(out, mutedStyle.Render("↑/↓ or j/k select  pgup/pgdn page  enter sort  esc cancel"))
+	}
 }
 
 func (a *App) applyFilter(pattern string) {
@@ -431,7 +565,7 @@ func (a *App) recomputeQueueFilter() {
 		a.filteredQueue = nil
 		return
 	}
-	a.filteredQueue = filterJobs(a.queueJobs, registry.VisibleColumns(registry.QueueTab), a.filterRegex, a.clock(), a.options.Location)
+	a.filteredQueue = filterJobs(a.queueJobs, a.columnsFor(registry.QueueTab), a.filterRegex, a.clock(), a.options.Location)
 }
 
 func (a *App) recomputeRecentFilter() {
@@ -439,10 +573,33 @@ func (a *App) recomputeRecentFilter() {
 		a.filteredRecent = nil
 		return
 	}
-	a.filteredRecent = filterJobs(a.recentJobs, registry.VisibleColumns(registry.RecentTab), a.filterRegex, a.clock(), a.options.Location)
+	a.filteredRecent = filterJobs(a.recentJobs, a.columnsFor(registry.RecentTab), a.filterRegex, a.clock(), a.options.Location)
 }
 
 func (a *App) handlePickerKey(msg tea.KeyMsg) tea.Cmd {
+	if a.pickerColumns {
+		switch {
+		case key.Matches(msg, appKeys.back):
+			a.mode = modeList
+		case key.Matches(msg, appKeys.up):
+			a.picker.Move(-1)
+		case key.Matches(msg, appKeys.down):
+			a.picker.Move(1)
+		case key.Matches(msg, appKeys.pageUp):
+			a.picker.Move(-a.pageSize())
+		case key.Matches(msg, appKeys.pageDown):
+			a.picker.Move(a.pageSize())
+		case key.Matches(msg, appKeys.toggle):
+			a.picker.Toggle()
+		case key.Matches(msg, appKeys.moveUp):
+			a.picker.MoveItem(-1)
+		case key.Matches(msg, appKeys.moveDown):
+			a.picker.MoveItem(1)
+		case key.Matches(msg, appKeys.save):
+			a.savePickedColumns()
+		}
+		return nil
+	}
 	switch {
 	case key.Matches(msg, appKeys.back):
 		a.mode = modeList
@@ -501,7 +658,7 @@ func (a *App) View() string {
 	fmt.Fprintf(&out, "%s  %s\n", queueTab, recentTab)
 
 	if a.showHelp {
-		fmt.Fprintln(&out, "tab / 1 / 2 switch views   ↑/↓ or j/k select   enter details   / filter   s sort   r refresh   u toggle scope   ? help   q quit")
+		fmt.Fprintln(&out, "tab / 1 / 2 switch views   ↑/↓ or j/k select   enter details   / filter   s sort   c columns   r refresh   u toggle scope   ? help   q quit")
 	} else {
 		columns := a.displayedColumns()
 		widths := fitWidths(columns, width)
@@ -545,7 +702,10 @@ func (a *App) View() string {
 	if a.filterError != nil {
 		status += "  " + a.filterError.Error()
 	}
-	if sourceErr != nil || otherErr != nil || a.filterError != nil {
+	if a.columnWarning != "" {
+		status += "  " + a.columnWarning
+	}
+	if sourceErr != nil || otherErr != nil || a.filterError != nil || a.columnWarning != "" {
 		fmt.Fprintln(&out, errorStyle.Render(status))
 	} else {
 		fmt.Fprintln(&out, mutedStyle.Render(status))
@@ -693,7 +853,7 @@ func (a *App) renderTable(out *strings.Builder, columns []registry.Column, width
 }
 
 func (a *App) displayedColumns() []registry.Column {
-	columns := registry.VisibleColumns(a.tab)
+	columns := a.columnsFor(a.tab)
 	state := a.activeSort()
 	if state.active {
 		for i := range columns {

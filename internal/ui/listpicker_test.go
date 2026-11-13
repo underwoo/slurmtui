@@ -1,6 +1,9 @@
 package ui
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestListPickerMovesAndSelects(t *testing.T) {
 	picker := newListPicker("columns", []string{"JobID", "Name", "State"}, 1)
@@ -17,5 +20,14 @@ func TestListPickerMovesAndSelects(t *testing.T) {
 	}
 	if got := picker.View(40, 12); got == "" {
 		t.Fatal("picker view is empty")
+	}
+}
+
+func TestCheckedListPickerShowsMarkerOnCursorRow(t *testing.T) {
+	picker := newListPicker("columns", []string{"job_id", "name"}, 0)
+	picker.SetChecked([]bool{true, false})
+	view := picker.View(40, 12)
+	if !strings.Contains(view, "> [x] job_id") || !strings.Contains(view, "  [ ] name") {
+		t.Fatalf("checkbox state missing from picker view:\n%s", view)
 	}
 }

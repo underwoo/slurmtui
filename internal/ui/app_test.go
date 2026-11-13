@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/muesli/termenv"
 
+	"slurmtui/internal/config"
 	"slurmtui/internal/model"
 	"slurmtui/internal/registry"
 	"slurmtui/internal/slurm"
@@ -176,6 +177,112 @@ func TestSortIsPerTabAndUsesJobIDForTies(t *testing.T) {
 	}
 	if got := app.recentJobs[0].ID; got != 7 {
 		t.Fatalf("Recent sort did not apply independently: first ID=%d", got)
+	}
+}
+
+func TestColumnPickerTogglesReordersAndSaves(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "slurmtui", "config.toml")
+	app := NewWithOptions(nil, Options{ConfigPath: path})
+	app.height = 24
+	app.queueJobs = []model.Job{{ID: 1}}
+	app.beginColumnPicker()
+	app.Update(tea.KeyMsg{Type: tea.KeySpace}) // hide JobID
+	app.Update(tea.KeyMsg{Type: tea.KeyDown})  // Name
+	if app.picker.Cursor() != 1 {
+		t.Fatalf("down key did not move picker cursor: %d", app.picker.Cursor())
+	}
+	app.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if app.picker.Cursor() != 0 {
+		t.Fatalf("up key did not move picker cursor: %d", app.picker.Cursor())
+	}
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	if app.picker.Cursor() != 1 {
+		t.Fatalf("j key did not move picker cursor: %d", app.picker.Cursor())
+	}
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	if app.picker.Cursor() != 0 {
+		t.Fatalf("k key did not move picker cursor: %d", app.picker.Cursor())
+	}
+	app.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if app.picker.Cursor() != len(app.picker.items)-1 {
+		t.Fatalf("page down did not move picker cursor: %d", app.picker.Cursor())
+	}
+	app.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	if app.picker.Cursor() != 0 {
+		t.Fatalf("page up did not move picker cursor: %d", app.picker.Cursor())
+	}
+	app.Update(tea.KeyMsg{Type: tea.KeyDown})
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'J'}})
+	if app.picker.Cursor() != 2 {
+		t.Fatalf("J did not reorder selected item down: cursor=%d", app.picker.Cursor())
+	}
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}})
+	if app.picker.Cursor() != 1 {
+		t.Fatalf("K did not reorder selected item up: cursor=%d", app.picker.Cursor())
+	}
+	for i := range app.picker.checked {
+		if i != 1 && app.picker.checked[i] {
+			app.picker.cursor = i
+			app.picker.Toggle()
+		}
+	}
+	app.picker.cursor = 1
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	if app.mode != modeList {
+		t.Fatalf("save left mode %v", app.mode)
+	}
+	columns := app.columnsFor(registry.QueueTab)
+	if len(columns) != 1 || columns[0].ID != "name" {
+		t.Fatalf("saved queue columns = %+v", columns)
+	}
+	if !strings.Contains(app.View(), "Name") || strings.Contains(app.View(), "JobID") {
+		t.Fatalf("table did not use saved columns:\n%s", app.View())
+	}
+	settings, err := config.LoadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(settings.QueueColumns) != "[name]" || len(settings.RecentColumns) == 0 {
+		t.Fatalf("saved settings = %+v", settings)
+	}
+}
+
+func TestColumnPickerReopensInConfiguredOrder(t *testing.T) {
+	app := NewWithOptions(nil, Options{QueueColumns: []string{"name", "job_id"}})
+	app.beginColumnPicker()
+	items := app.picker.Items()
+	if !strings.HasPrefix(items[0], "name  ") || !strings.HasPrefix(items[1], "job_id  ") {
+		t.Fatalf("picker did not preserve configured order: %v", items[:2])
+	}
+}
+
+func TestHidingColumnRecomputesActiveFilter(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "slurmtui", "config.toml")
+	app := NewWithOptions(nil, Options{ConfigPath: path})
+	app.queueJobs = []model.Job{{ID: 1, Name: "secret-job"}, {ID: 2, Name: "ordinary"}}
+	app.applyFilter("secret")
+	if len(app.visibleQueue()) != 1 {
+		t.Fatalf("initial filter returned %d jobs, want 1", len(app.visibleQueue()))
+	}
+	app.beginColumnPicker()
+	app.Update(tea.KeyMsg{Type: tea.KeyDown}) // Name
+	app.Update(tea.KeyMsg{Type: tea.KeySpace})
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	if len(app.visibleQueue()) != 0 {
+		t.Fatalf("filter still matched text in hidden Name column: %+v", app.visibleQueue())
+	}
+}
+
+func TestColumnPickerEscapeCancelsAndUnknownIDsWarn(t *testing.T) {
+	app := NewWithOptions(nil, Options{QueueColumns: []string{"job_id", "unknown"}})
+	app.queueJobs = []model.Job{{ID: 1}}
+	if !strings.Contains(app.View(), "unknown column IDs skipped: unknown") {
+		t.Fatalf("unknown column warning missing:\n%s", app.View())
+	}
+	app.beginColumnPicker()
+	app.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if app.mode != modeList || app.options.QueueColumns[1] != "unknown" {
+		t.Fatalf("escape changed saved selection: mode=%v columns=%v", app.mode, app.options.QueueColumns)
 	}
 }
 
