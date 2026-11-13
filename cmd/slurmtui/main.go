@@ -41,6 +41,9 @@ func main() {
 		RefreshInterval: settings.RefreshInterval,
 		RecentWindow:    settings.RecentWindow,
 		Scope:           settings.DefaultScope,
+		ConfigPath:      settings.Path,
+		QueueColumns:    settings.QueueColumns,
+		RecentColumns:   settings.RecentColumns,
 	}), tea.WithAltScreen())
 	if _, err := program.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "slurmtui:", err)

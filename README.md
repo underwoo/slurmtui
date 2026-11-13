@@ -70,6 +70,7 @@ The **Queue** view shows active jobs. **Recent** shows jobs that completed withi
 | `Enter` | Open details for the selected job |
 | `/` | Open the live regular-expression filter (Enter keeps it; Esc clears it) |
 | `s` | Sort by a visible column; selecting the current column flips direction |
+| `c` | Choose visible columns; use Space to toggle, `J`/`K` to reorder, and `w` to save |
 | `Esc` | Return from job details to the list, or clear an active filter |
 | `a` | Show or hide the raw All fields section in job details |
 | `r` | Refresh the job lists |
@@ -108,6 +109,12 @@ Configuration is read from `slurmtui/config.toml` under `$XDG_CONFIG_HOME`. If `
 refresh_interval = "15s"
 recent_window = "1h"
 default_scope = "me"
+
+[columns]
+queue = ["job_id", "name", "user", "account", "partition", "qos", "state", "elapsed_limit", "nodes", "node_reason"]
+recent = ["job_id", "name", "user", "account", "partition", "qos", "state", "elapsed_limit", "nodes", "node_reason", "end"]
 ```
 
 `default_scope` can be `"me"` or `"all"`. If the file is missing, these defaults apply. Invalid values produce an error at startup. Command-line options override the file; `--all` selects the all-users scope.
+
+The optional `[columns]` table stores visible column IDs in display order. The column picker updates only this table and preserves the rest of the file. Unknown IDs are skipped with a status-line warning.

@@ -133,3 +133,31 @@ func VisibleColumns(tab Tab) []Column {
 	}
 	return visible
 }
+
+// ColumnsForIDs resolves an optional configured order. Unknown IDs are omitted
+// and returned so the UI can surface them to the user.
+func ColumnsForIDs(tab Tab, ids []string) ([]Column, []string) {
+	if ids == nil {
+		return VisibleColumns(tab), nil
+	}
+	available := make(map[string]Column)
+	for _, column := range VisibleColumns(tab) {
+		available[column.ID] = column
+	}
+	columns := make([]Column, 0, len(ids))
+	unknown := make([]string, 0)
+	seen := make(map[string]bool)
+	for _, id := range ids {
+		column, ok := available[id]
+		if !ok {
+			unknown = append(unknown, id)
+			continue
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		columns = append(columns, column)
+	}
+	return columns, unknown
+}

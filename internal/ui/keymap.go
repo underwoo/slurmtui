@@ -11,6 +11,11 @@ type appKeyMap struct {
 	help      key.Binding
 	filter    key.Binding
 	sort      key.Binding
+	columns   key.Binding
+	toggle    key.Binding
+	moveUp    key.Binding
+	moveDown  key.Binding
+	save      key.Binding
 	tab       key.Binding
 	queue     key.Binding
 	recent    key.Binding
@@ -31,6 +36,11 @@ var appKeys = appKeyMap{
 	help:      key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 	filter:    key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter")),
 	sort:      key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sort")),
+	columns:   key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "columns")),
+	toggle:    key.NewBinding(key.WithKeys(" ")),
+	moveUp:    key.NewBinding(key.WithKeys("K")),
+	moveDown:  key.NewBinding(key.WithKeys("J")),
+	save:      key.NewBinding(key.WithKeys("w")),
 	tab:       key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab/1/2", "view")),
 	queue:     key.NewBinding(key.WithKeys("1")),
 	recent:    key.NewBinding(key.WithKeys("2")),
@@ -55,6 +65,7 @@ func (appKeyMap) listHelp() string {
 		appKeys.scope.Help().Key + " " + appKeys.scope.Help().Desc,
 		appKeys.filter.Help().Key + " " + appKeys.filter.Help().Desc,
 		appKeys.sort.Help().Key + " " + appKeys.sort.Help().Desc,
+		appKeys.columns.Help().Key + " " + appKeys.columns.Help().Desc,
 		appKeys.help.Help().Key + " " + appKeys.help.Help().Desc,
 		appKeys.quit.Help().Key + " " + appKeys.quit.Help().Desc,
 	}, "  ")
