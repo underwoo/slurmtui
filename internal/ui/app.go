@@ -26,6 +26,7 @@ type Options struct {
 	RecentWindow    time.Duration
 	Scope           slurm.Scope
 	Clock           func() time.Time
+	Location        *time.Location
 }
 
 type App struct {
@@ -72,6 +73,9 @@ func NewWithOptions(runner slurm.Runner, options Options) *App {
 	clock := options.Clock
 	if clock == nil {
 		clock = time.Now
+	}
+	if options.Location == nil {
+		options.Location = time.Local
 	}
 	return &App{runner: runner, options: options, clock: clock, tab: registry.QueueTab, scope: options.Scope}
 }
@@ -260,7 +264,7 @@ func (a *App) renderDetail(out *strings.Builder, width int) {
 				continue
 			}
 			lines = append(lines, "", titleStyle.Render(section.Title))
-			for _, line := range section.Render(*a.detail, a.clock()) {
+			for _, line := range section.Render(*a.detail, a.clock(), a.options.Location) {
 				if section.ID == "summary" && strings.HasPrefix(line, "Comment: ") {
 					lines = append(lines, wrapCommentLine(line, width)...)
 				} else {
@@ -371,7 +375,7 @@ func (a *App) renderTable(out *strings.Builder, columns []registry.Column, width
 			if columnIndex > 0 {
 				line.WriteByte(' ')
 			}
-			line.WriteString(pad(column.Value(jobs[row], now), widths[columnIndex]))
+			line.WriteString(pad(column.Value(jobs[row], now, a.options.Location), widths[columnIndex]))
 		}
 		text := line.String()
 		if row == cursor {

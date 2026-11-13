@@ -15,7 +15,7 @@ type DetailSection struct {
 	ID      string
 	Title   string
 	Applies func(model.JobDetail) bool
-	Render  func(model.JobDetail, time.Time) []string
+	Render  func(model.JobDetail, time.Time, *time.Location) []string
 }
 
 func DetailSections() []DetailSection {
@@ -32,7 +32,7 @@ func DetailSections() []DetailSection {
 
 func alwaysDetail(model.JobDetail) bool { return true }
 
-func renderSummary(d model.JobDetail, _ time.Time) []string {
+func renderSummary(d model.JobDetail, _ time.Time, _ *time.Location) []string {
 	j := d.Job
 	lines := []string{fmt.Sprintf("Job ID: %s", j.DisplayID()), fmt.Sprintf("Name: %s", emptyDash(j.Name)), fmt.Sprintf("User: %s", emptyDash(j.UserName)), fmt.Sprintf("Account: %s", emptyDash(j.Account)), fmt.Sprintf("Partition: %s", emptyDash(j.Partition)), fmt.Sprintf("QOS: %s", emptyDash(j.QOS)), fmt.Sprintf("State: %s", stateString(j.States))}
 	if comment := strings.TrimSpace(d.Comment); comment != "" {
@@ -41,7 +41,7 @@ func renderSummary(d model.JobDetail, _ time.Time) []string {
 	return append(lines, fmt.Sprintf("Node list: %s", emptyDash(j.NodeList)), fmt.Sprintf("Node count: %s", j.NodeCount.String()))
 }
 
-func renderResources(d model.JobDetail, _ time.Time) []string {
+func renderResources(d model.JobDetail, _ time.Time, _ *time.Location) []string {
 	if len(d.Requested) == 0 && len(d.Allocated) == 0 && (d.RequestedText != "" || d.AllocatedText != "") {
 		return []string{
 			"Requested TRES: " + emptyDash(d.RequestedText),
@@ -73,16 +73,16 @@ func renderTRES(items []model.TRES) []string {
 	return lines
 }
 
-func renderTiming(d model.JobDetail, now time.Time) []string {
+func renderTiming(d model.JobDetail, now time.Time, location *time.Location) []string {
 	j := d.Job
-	return []string{fmt.Sprintf("Submitted: %s", timeString(j.SubmitTime)), fmt.Sprintf("Started: %s", timeString(j.StartTime)), fmt.Sprintf("Ended: %s", timeString(j.EndTime)), fmt.Sprintf("Elapsed: %s", elapsedString(j, now)), fmt.Sprintf("Time limit: %s", j.TimeLimit.String()), fmt.Sprintf("Exit: %s", exitString(j.ExitCode))}
+	return []string{fmt.Sprintf("Submitted: %s", timeString(j.SubmitTime, location)), fmt.Sprintf("Started: %s", timeString(j.StartTime, location)), fmt.Sprintf("Ended: %s", timeString(j.EndTime, location)), fmt.Sprintf("Elapsed: %s", elapsedString(j, now)), fmt.Sprintf("Time limit: %s", j.TimeLimit.String()), fmt.Sprintf("Exit: %s", exitString(j.ExitCode))}
 }
 
-func renderPaths(d model.JobDetail, _ time.Time) []string {
+func renderPaths(d model.JobDetail, _ time.Time, _ *time.Location) []string {
 	return []string{fmt.Sprintf("Working directory: %s", emptyDash(d.Job.WorkingDirectory)), fmt.Sprintf("Command: %s", emptyDash(d.Job.Command)), fmt.Sprintf("Stdout: %s", emptyDash(d.Job.Stdout)), fmt.Sprintf("Stderr: %s", emptyDash(d.Job.Stderr)), fmt.Sprintf("Stdin: %s", emptyDash(d.Job.Stdin))}
 }
 
-func renderSteps(d model.JobDetail, _ time.Time) []string {
+func renderSteps(d model.JobDetail, _ time.Time, _ *time.Location) []string {
 	lines := make([]string, 0, len(d.Steps)*4)
 	for _, step := range d.Steps {
 		lines = append(lines, fmt.Sprintf("%s (%s)", emptyDash(step.ID), emptyDash(step.Name)), fmt.Sprintf("  State: %s", stateString(step.State)), fmt.Sprintf("  Exit: %s  Elapsed: %s", exitString(step.ExitCode), durationString(step.Elapsed)), fmt.Sprintf("  Nodes: %s", emptyDash(step.Nodes)))
@@ -90,12 +90,12 @@ func renderSteps(d model.JobDetail, _ time.Time) []string {
 	return lines
 }
 
-func renderReason(d model.JobDetail, _ time.Time) []string {
+func renderReason(d model.JobDetail, _ time.Time, _ *time.Location) []string {
 	j := d.Job
 	return []string{fmt.Sprintf("Reason: %s", emptyDash(j.StateReason)), fmt.Sprintf("Dependency: %s", emptyDash(j.Dependency))}
 }
 
-func renderAllFields(d model.JobDetail, _ time.Time) []string {
+func renderAllFields(d model.JobDetail, _ time.Time, _ *time.Location) []string {
 	if len(d.RawJSON) == 0 {
 		return []string{"  (raw fields unavailable)"}
 	}
@@ -106,12 +106,12 @@ func renderAllFields(d model.JobDetail, _ time.Time) []string {
 	return strings.Split(pretty.String(), "\n")
 }
 
-func timeString(value model.NoValNumber) string {
+func timeString(value model.NoValNumber, location *time.Location) string {
 	if n, ok := value.Value(); ok {
 		if n <= 0 {
 			return "—"
 		}
-		return time.Unix(n, 0).UTC().Format("2006-01-02 15:04:05 UTC")
+		return time.Unix(n, 0).In(localLocation(location)).Format("2006-01-02 15:04:05 MST")
 	}
 	return value.String()
 }

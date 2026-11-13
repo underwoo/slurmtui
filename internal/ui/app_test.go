@@ -37,6 +37,20 @@ func TestQueueViewGolden(t *testing.T) {
 	teatest.RequireEqualOutput(t, []byte(app.View()))
 }
 
+func TestRecentViewGolden(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	location := time.FixedZone("EST", -5*60*60)
+	app := NewWithOptions(nil, Options{Scope: slurm.ScopeMe, Location: location})
+	app.width, app.height = 180, 16
+	app.tab = registry.RecentTab
+	app.recentJobs = []model.Job{{
+		ID: 34827648, Name: "completed", UserName: "user", Account: "account",
+		Partition: "partition", QOS: "qos", States: []model.State{model.StateCompleted},
+		EndTime: model.NoValNumber{Set: true, Number: 1794351631},
+	}}
+	teatest.RequireEqualOutput(t, []byte(app.View()))
+}
+
 func TestSelectedJobSurvivesRefreshAndMissingJobClampsCursor(t *testing.T) {
 	app := NewWithOptions(nil, Options{Scope: slurm.ScopeMe})
 	first := model.Job{ID: 1, Name: "first"}
@@ -65,18 +79,31 @@ func TestQueueAndRecentColumns(t *testing.T) {
 	if queueIDs["end"] || !recentIDs["end"] {
 		t.Fatalf("End column visibility: queue=%t recent=%t", queueIDs["end"], recentIDs["end"])
 	}
+	var endColumn registry.Column
+	for _, column := range registry.DefaultColumns() {
+		if column.ID == "end" {
+			endColumn = column
+			break
+		}
+	}
+	jobWithEnd := model.Job{EndTime: model.NoValNumber{Set: true, Number: 1794351631}}
+	utcTime := endColumn.Value(jobWithEnd, time.Time{}, time.UTC)
+	estTime := endColumn.Value(jobWithEnd, time.Time{}, time.FixedZone("EST", -5*60*60))
+	if utcTime != "11-10 23:00" || estTime != "11-10 18:00" {
+		t.Fatalf("End column time: UTC=%q EST=%q, want 11-10 23:00 / 11-10 18:00", utcTime, estTime)
+	}
 	columns := registry.DefaultColumns()
 	byID := make(map[string]registry.Column, len(columns))
 	for _, column := range columns {
 		byID[column.ID] = column
 	}
-	if got := byID["node_reason"].Value(model.Job{States: []model.State{model.StatePending}, StateReason: "Priority"}, time.Time{}); got != "(Priority)" {
+	if got := byID["node_reason"].Value(model.Job{States: []model.State{model.StatePending}, StateReason: "Priority"}, time.Time{}, nil); got != "(Priority)" {
 		t.Errorf("pending NodeList(Reason) = %q, want (Priority)", got)
 	}
-	if got := byID["node_reason"].Value(model.Job{States: []model.State{model.StateRunning}, NodeList: "n001"}, time.Time{}); got != "n001" {
+	if got := byID["node_reason"].Value(model.Job{States: []model.State{model.StateRunning}, NodeList: "n001"}, time.Time{}, nil); got != "n001" {
 		t.Errorf("running NodeList(Reason) = %q, want n001", got)
 	}
-	if got := byID["elapsed_limit"].Value(model.Job{States: []model.State{model.StatePending}, TimeLimit: model.NoValNumber{Infinite: true}}, time.Time{}); got != "—/∞" {
+	if got := byID["elapsed_limit"].Value(model.Job{States: []model.State{model.StatePending}, TimeLimit: model.NoValNumber{Infinite: true}}, time.Time{}, nil); got != "—/∞" {
 		t.Errorf("pending Elapsed/TimeLimit = %q, want —/∞", got)
 	}
 }
@@ -93,6 +120,7 @@ func TestRefreshFailureKeepsExistingRows(t *testing.T) {
 func TestDetailViewForPendingRunningCompletedAndFailedJobs(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 	clock := func() time.Time { return time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC) }
+	location := time.FixedZone("EST", -5*60*60)
 	queue := readQueueFixture(t)
 	running := readRunningFixture(t)
 	cases := []struct {
@@ -110,7 +138,7 @@ func TestDetailViewForPendingRunningCompletedAndFailedJobs(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			runner := &detailTestRunner{command: tc.command, response: tc.response}
-			app := NewWithOptions(runner, Options{Scope: slurm.ScopeMe, Clock: clock})
+			app := NewWithOptions(runner, Options{Scope: slurm.ScopeMe, Clock: clock, Location: location})
 			app.width, app.height = 120, 100
 			if tc.fromRecent {
 				app.tab = registry.RecentTab
@@ -168,13 +196,13 @@ func TestSummaryTrimsCommentsAndOmitsBlankValues(t *testing.T) {
 		t.Fatal("summary detail section not found")
 	}
 	for _, comment := range []string{"", " \n\t "} {
-		for _, line := range summary.Render(model.JobDetail{Comment: comment}, time.Time{}) {
+		for _, line := range summary.Render(model.JobDetail{Comment: comment}, time.Time{}, nil) {
 			if strings.HasPrefix(line, "Comment:") {
 				t.Fatalf("blank comment rendered as %q", line)
 			}
 		}
 	}
-	for _, line := range summary.Render(model.JobDetail{Comment: "  note\ncontinued  "}, time.Time{}) {
+	for _, line := range summary.Render(model.JobDetail{Comment: "  note\ncontinued  "}, time.Time{}, nil) {
 		if line == "Comment: note\ncontinued" {
 			return
 		}
