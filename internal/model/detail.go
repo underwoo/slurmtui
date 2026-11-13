@@ -5,6 +5,7 @@ import "encoding/json"
 // JobDetail contains fields that are fetched only after opening a job.
 type JobDetail struct {
 	Job       Job
+	Comment   string
 	Requested []TRES
 	Allocated []TRES
 	// Text forms are used by scontrol, whose schema exposes TRES strings.

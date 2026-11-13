@@ -185,7 +185,9 @@ func (s *scrubber) cleanAt(key, parent string, value any) any {
 	}
 	normalized := strings.ToLower(key)
 	switch normalized {
-	case "comment", "admin_comment", "system_comment", "job_comment", "extra":
+	case "comment":
+		return s.scrubComment(value)
+	case "admin_comment", "system_comment", "job_comment", "extra":
 		return scrubStrings(value, "")
 	case "script":
 		if _, ok := value.(string); ok {
@@ -207,6 +209,25 @@ func (s *scrubber) cleanAt(key, parent string, value any) any {
 		return cleaned
 	default:
 		return value
+	}
+}
+
+func (s *scrubber) scrubComment(value any) any {
+	switch comment := value.(type) {
+	case string:
+		return s.fake("comment", comment, "comment")
+	case map[string]any:
+		cleaned := make(map[string]any, len(comment))
+		for key, item := range comment {
+			if strings.EqualFold(key, "job") {
+				cleaned[key] = s.scrubComment(item)
+			} else {
+				cleaned[key] = scrubStrings(item, "")
+			}
+		}
+		return cleaned
+	default:
+		return scrubStrings(value, "")
 	}
 }
 

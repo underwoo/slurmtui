@@ -111,17 +111,24 @@ func TestPrioritizePendingTrimsAndRetainsPending(t *testing.T) {
 	}
 }
 
-func TestScrubberClearsNestedComments(t *testing.T) {
+func TestScrubberReplacesNonEmptyJobCommentsAndPreservesEmptyComments(t *testing.T) {
 	cleaner := newScrubber()
 	value := cleaner.clean("comment", map[string]any{
 		"administrator": "private admin note",
 		"job":           "private job note",
 		"system":        "private system note",
 	}).(map[string]any)
-	for key, item := range value {
-		if item != "" {
-			t.Errorf("comment field %q was not cleared", key)
-		}
+	if value["administrator"] != "" || value["system"] != "" {
+		t.Fatalf("admin/system comments were not cleared: %v", value)
+	}
+	if value["job"] != "comment-01" {
+		t.Fatalf("job comment = %v, want comment-01", value["job"])
+	}
+	if got := cleaner.clean("comment", ""); got != "" {
+		t.Fatalf("empty comment = %v, want empty", got)
+	}
+	if got := cleaner.clean("comment", "another private job note"); got != "comment-02" {
+		t.Fatalf("second job comment = %v, want comment-02", got)
 	}
 }
 

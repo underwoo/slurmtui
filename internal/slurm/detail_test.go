@@ -1,6 +1,7 @@
 package slurm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,12 +15,12 @@ import (
 func TestGetJobDetailUsesScontrolForQueueAndDecodesFields(t *testing.T) {
 	job := model.Job{ID: 42}
 	runner := newFakeRunner()
-	runner.responses["scontrol show job 42 --json"] = []byte(`{"jobs":[{"job_id":42,"name":"running","job_state":["RUNNING"],"tres_req_str":"cpu=4,mem=8G","tres_alloc_str":"cpu=4,mem=8G"}]}`)
+	runner.responses["scontrol show job 42 --json"] = []byte(`{"jobs":[{"job_id":42,"name":"running","job_state":["RUNNING"],"comment":"  useful note  ","tres_req_str":"cpu=4,mem=8G","tres_alloc_str":"cpu=4,mem=8G"}]}`)
 	detail, err := GetJobDetail(context.Background(), runner, job, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if detail.Job.Name != "running" || detail.RequestedText != "cpu=4,mem=8G" || detail.AllocatedText != "cpu=4,mem=8G" {
+	if detail.Job.Name != "running" || detail.Comment != "  useful note  " || detail.RequestedText != "cpu=4,mem=8G" || detail.AllocatedText != "cpu=4,mem=8G" {
 		t.Fatalf("decoded detail = %+v", detail)
 	}
 	if len(runner.calls) != 1 || runner.calls[0] != "scontrol show job 42 --json" {
@@ -56,11 +57,12 @@ func TestGetJobDetailFallsBackWhenScontrolJSONReportsInvalidJob(t *testing.T) {
 }
 
 func TestDecodeSacctDetailIncludesStepsAndPaths(t *testing.T) {
-	detail, err := decodeSacctDetail(fixture(t, "sacct_recent.json"), "34827648")
+	data := bytes.Replace(fixture(t, "sacct_recent.json"), []byte(`"comment":{"administrator":"","job":"","system":""}`), []byte(`"comment":{"administrator":"private admin note","job":"  useful note  ","system":"private system note"}`), 1)
+	detail, err := decodeSacctDetail(data, "34827648")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if detail.Job.Name != "job-01" || len(detail.Steps) != 2 {
+	if detail.Job.Name != "job-01" || detail.Comment != "  useful note  " || len(detail.Steps) != 2 {
 		t.Fatalf("job = %+v, steps = %d", detail.Job, len(detail.Steps))
 	}
 	if detail.Steps[0].ID != "34827648.batch" || detail.Steps[1].ID != "34827648.extern" {

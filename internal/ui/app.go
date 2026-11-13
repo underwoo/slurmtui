@@ -261,7 +261,11 @@ func (a *App) renderDetail(out *strings.Builder, width int) {
 			}
 			lines = append(lines, "", titleStyle.Render(section.Title))
 			for _, line := range section.Render(*a.detail, a.clock()) {
-				lines = append(lines, strings.Split(line, "\n")...)
+				if section.ID == "summary" && strings.HasPrefix(line, "Comment: ") {
+					lines = append(lines, wrapCommentLine(line, width)...)
+				} else {
+					lines = append(lines, strings.Split(line, "\n")...)
+				}
 			}
 		}
 		available := max(1, a.height-2)
@@ -276,6 +280,46 @@ func (a *App) renderDetail(out *strings.Builder, width int) {
 		}
 	}
 	fmt.Fprintln(out, mutedStyle.Render("↑/↓ or j/k scroll  pgup/pgdn page  a all fields  esc back  q quit"))
+}
+
+func wrapCommentLine(line string, width int) []string {
+	const prefix = "Comment: "
+	comment := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+	valueWidth := max(1, width-len([]rune(prefix)))
+	continuation := strings.Repeat(" ", len([]rune(prefix)))
+	wrapped := make([]string, 0, strings.Count(comment, "\n")+1)
+	for _, paragraph := range strings.Split(comment, "\n") {
+		if paragraph == "" {
+			wrapped = append(wrapped, continuation)
+			continue
+		}
+		words := strings.Fields(paragraph)
+		current := ""
+		for _, word := range words {
+			for len([]rune(word)) > valueWidth {
+				if current != "" {
+					wrapped = append(wrapped, continuation+current)
+					current = ""
+				}
+				runes := []rune(word)
+				wrapped = append(wrapped, continuation+string(runes[:valueWidth]))
+				word = string(runes[valueWidth:])
+			}
+			if current == "" {
+				current = word
+			} else if len([]rune(current))+1+len([]rune(word)) <= valueWidth {
+				current += " " + word
+			} else {
+				wrapped = append(wrapped, continuation+current)
+				current = word
+			}
+		}
+		wrapped = append(wrapped, continuation+current)
+	}
+	if len(wrapped) > 0 {
+		wrapped[0] = prefix + strings.TrimPrefix(wrapped[0], continuation)
+	}
+	return wrapped
 }
 
 func truncateLine(line string, width int) string {
