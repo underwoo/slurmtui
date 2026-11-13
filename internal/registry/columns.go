@@ -23,24 +23,24 @@ type Column struct {
 	MinWidth       int
 	DefaultVisible bool
 	RecentOnly     bool
-	Value          func(model.Job, time.Time) string
+	Value          func(model.Job, time.Time, *time.Location) string
 }
 
 func DefaultColumns() []Column {
 	return []Column{
-		{ID: "job_id", Header: "JobID", Width: 12, MinWidth: 6, DefaultVisible: true, Value: func(job model.Job, _ time.Time) string { return job.DisplayID() }},
-		{ID: "name", Header: "Name", Width: 22, MinWidth: 7, DefaultVisible: true, Value: func(job model.Job, _ time.Time) string { return job.Name }},
-		{ID: "user", Header: "User", Width: 12, MinWidth: 6, DefaultVisible: true, Value: func(job model.Job, _ time.Time) string { return job.UserName }},
-		{ID: "account", Header: "Account", Width: 12, MinWidth: 6, DefaultVisible: true, Value: func(job model.Job, _ time.Time) string { return job.Account }},
-		{ID: "partition", Header: "Partition", Width: 10, MinWidth: 6, DefaultVisible: true, Value: func(job model.Job, _ time.Time) string { return job.Partition }},
-		{ID: "qos", Header: "QOS", Width: 9, MinWidth: 5, DefaultVisible: true, Value: func(job model.Job, _ time.Time) string { return job.QOS }},
-		{ID: "state", Header: "State", Width: 14, MinWidth: 7, DefaultVisible: true, Value: func(job model.Job, _ time.Time) string { return firstState(job.States) }},
+		{ID: "job_id", Header: "JobID", Width: 12, MinWidth: 6, DefaultVisible: true, Value: func(job model.Job, _ time.Time, _ *time.Location) string { return job.DisplayID() }},
+		{ID: "name", Header: "Name", Width: 22, MinWidth: 7, DefaultVisible: true, Value: func(job model.Job, _ time.Time, _ *time.Location) string { return job.Name }},
+		{ID: "user", Header: "User", Width: 12, MinWidth: 6, DefaultVisible: true, Value: func(job model.Job, _ time.Time, _ *time.Location) string { return job.UserName }},
+		{ID: "account", Header: "Account", Width: 12, MinWidth: 6, DefaultVisible: true, Value: func(job model.Job, _ time.Time, _ *time.Location) string { return job.Account }},
+		{ID: "partition", Header: "Partition", Width: 10, MinWidth: 6, DefaultVisible: true, Value: func(job model.Job, _ time.Time, _ *time.Location) string { return job.Partition }},
+		{ID: "qos", Header: "QOS", Width: 9, MinWidth: 5, DefaultVisible: true, Value: func(job model.Job, _ time.Time, _ *time.Location) string { return job.QOS }},
+		{ID: "state", Header: "State", Width: 14, MinWidth: 7, DefaultVisible: true, Value: func(job model.Job, _ time.Time, _ *time.Location) string { return firstState(job.States) }},
 		{ID: "elapsed_limit", Header: "Elapsed/Limit", Width: 19, MinWidth: 10, DefaultVisible: true, Value: elapsedLimit},
-		{ID: "nodes", Header: "Nodes", Width: 7, MinWidth: 5, DefaultVisible: true, Value: func(job model.Job, _ time.Time) string { return job.NodeCount.String() }},
+		{ID: "nodes", Header: "Nodes", Width: 7, MinWidth: 5, DefaultVisible: true, Value: func(job model.Job, _ time.Time, _ *time.Location) string { return job.NodeCount.String() }},
 		{ID: "node_reason", Header: "NodeList(Reason)", Width: 24, MinWidth: 8, DefaultVisible: true, Value: nodeListReason},
-		{ID: "end", Header: "End", Width: 16, MinWidth: 8, DefaultVisible: true, RecentOnly: true, Value: func(job model.Job, _ time.Time) string {
+		{ID: "end", Header: "End", Width: 16, MinWidth: 8, DefaultVisible: true, RecentOnly: true, Value: func(job model.Job, _ time.Time, location *time.Location) string {
 			if value, ok := job.EndTime.Value(); ok {
-				return time.Unix(value, 0).UTC().Format("01-02 15:04")
+				return time.Unix(value, 0).In(localLocation(location)).Format("01-02 15:04")
 			}
 			return "—"
 		}},
@@ -54,7 +54,7 @@ func firstState(states []model.State) string {
 	return string(states[0])
 }
 
-func elapsedLimit(job model.Job, now time.Time) string {
+func elapsedLimit(job model.Job, now time.Time, _ *time.Location) string {
 	state := firstState(job.States)
 	elapsed := "—"
 	if state != string(model.StatePending) {
@@ -88,7 +88,7 @@ func formatDuration(seconds int64) string {
 	return fmt.Sprintf("%d:%02d", minutes, remaining)
 }
 
-func nodeListReason(job model.Job, _ time.Time) string {
+func nodeListReason(job model.Job, _ time.Time, _ *time.Location) string {
 	state := firstState(job.States)
 	if state == string(model.StateRunning) && job.NodeList != "" {
 		return job.NodeList
@@ -109,6 +109,13 @@ func nodeListReason(job model.Job, _ time.Time) string {
 		return "(" + job.StateReason + ")"
 	}
 	return "—"
+}
+
+func localLocation(location *time.Location) *time.Location {
+	if location == nil {
+		return time.Local
+	}
+	return location
 }
 
 func VisibleColumns(tab Tab) []Column {

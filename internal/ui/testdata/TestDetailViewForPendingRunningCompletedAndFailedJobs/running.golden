@@ -17,9 +17,9 @@ Requested TRES: cpu=1,mem=5G,node=1,billing=165
 Allocated TRES: cpu=1,mem=5G,node=1,billing=165
 
 Timing
-Submitted: 2026-11-10 16:32:00 UTC
-Started: 2026-11-10 16:32:00 UTC
-Ended: 2026-11-11 00:32:00 UTC
+Submitted: 2026-11-10 11:32:00 EST
+Started: 2026-11-10 11:32:00 EST
+Ended: 2026-11-10 19:32:00 EST
 Elapsed: 19:28:00
 Time limit: 480
 Exit: code 0
