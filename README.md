@@ -74,6 +74,7 @@ The **Queue** view shows active jobs. **Recent** shows jobs that completed withi
 | `x` | Cancel the selected job after confirmation |
 | `h` | Hold a pending job, or release a user/admin-held job, after confirmation |
 | `R` | Requeue the selected job after confirmation |
+| `e` | Edit a job's time limit, name, and comment, then confirm the changes |
 | `Esc` | Return from job details to the list, or clear an active filter |
 | `a` | Show or hide the raw All fields section in job details |
 | `r` | Refresh the job lists |

@@ -15,6 +15,7 @@ type appKeyMap struct {
 	cancel    key.Binding
 	hold      key.Binding
 	requeue   key.Binding
+	edit      key.Binding
 	toggle    key.Binding
 	moveUp    key.Binding
 	moveDown  key.Binding
@@ -43,6 +44,7 @@ var appKeys = appKeyMap{
 	cancel:    key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "cancel")),
 	hold:      key.NewBinding(key.WithKeys("h"), key.WithHelp("h", "hold/release")),
 	requeue:   key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "requeue")),
+	edit:      key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit job")),
 	toggle:    key.NewBinding(key.WithKeys(" ")),
 	moveUp:    key.NewBinding(key.WithKeys("K")),
 	moveDown:  key.NewBinding(key.WithKeys("J")),
@@ -75,6 +77,7 @@ func (appKeyMap) listHelp() string {
 		appKeys.cancel.Help().Key + " " + appKeys.cancel.Help().Desc,
 		appKeys.hold.Help().Key + " " + appKeys.hold.Help().Desc,
 		appKeys.requeue.Help().Key + " " + appKeys.requeue.Help().Desc,
+		appKeys.edit.Help().Key + " " + appKeys.edit.Help().Desc,
 		appKeys.help.Help().Key + " " + appKeys.help.Help().Desc,
 		appKeys.quit.Help().Key + " " + appKeys.quit.Help().Desc,
 	}, "  ")
@@ -88,6 +91,7 @@ func (appKeyMap) detailHelp() string {
 		appKeys.cancel.Help().Key + " " + appKeys.cancel.Help().Desc,
 		appKeys.hold.Help().Key + " " + appKeys.hold.Help().Desc,
 		appKeys.requeue.Help().Key + " " + appKeys.requeue.Help().Desc,
+		appKeys.edit.Help().Key + " " + appKeys.edit.Help().Desc,
 		appKeys.back.Help().Key + " " + appKeys.back.Help().Desc,
 		appKeys.quit.Help().Key + " " + appKeys.quit.Help().Desc,
 	}, "  ")

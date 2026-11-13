@@ -123,6 +123,7 @@ func (a *App) beginActionFromSelection(action jobAction) {
 }
 
 func (a *App) beginJobAction(action jobAction, job model.Job, returnMode mode) {
+	a.editConfirm = false
 	if action == actionNone {
 		a.actionStatus = "hold/release is only available for pending jobs"
 		return
