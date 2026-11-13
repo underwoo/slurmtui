@@ -37,6 +37,18 @@ func TestQueueViewGolden(t *testing.T) {
 	teatest.RequireEqualOutput(t, []byte(app.View()))
 }
 
+func TestModeKeysDoNotLeak(t *testing.T) {
+	app := NewWithOptions(nil, Options{})
+	app.mode = modeFilter
+	_, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	if cmd != nil {
+		t.Fatal("typing q in filter mode unexpectedly triggered a command")
+	}
+	if app.mode != modeFilter {
+		t.Fatalf("typing q changed mode to %v", app.mode)
+	}
+}
+
 func TestRecentViewGolden(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 	location := time.FixedZone("EST", -5*60*60)
@@ -168,6 +180,7 @@ func TestDetailViewForPendingRunningCompletedAndFailedJobs(t *testing.T) {
 func TestDetailViewSplitsMultilineCommandIntoViewportRows(t *testing.T) {
 	app := NewWithOptions(nil, Options{Scope: slurm.ScopeMe})
 	app.width, app.height = 120, 100
+	app.mode = modeDetail
 	app.detailJob = model.Job{ID: 7}
 	app.detail = &model.JobDetail{Job: model.Job{ID: 7, Command: "#!/bin/sh\nprintf done\n"}}
 	view := app.View()

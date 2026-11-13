@@ -24,13 +24,12 @@ jobs:
         run: make test
 
       - name: Build static Linux binaries
+        id: build
         env:
           VERSION: ${{ github.ref_name }}
         run: |
-          if [[ ! "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-            echo "tag must be a semantic version in vMAJOR.MINOR.PATCH form: $VERSION" >&2
-            exit 1
-          fi
+          RELEASE_KIND="$(go run ./tools/releasetag "$VERSION")"
+          echo "release_kind=$RELEASE_KIND" >> "$GITHUB_OUTPUT"
 
           for arch in amd64 arm64; do
             CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build \
@@ -46,11 +45,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ github.ref_name }}
-        run: >-
-          gh release create "$VERSION"
-          slurmtui-linux-amd64
-          slurmtui-linux-arm64
-          SHA256SUMS
-          --verify-tag
-          --title "$VERSION"
-          --generate-notes
+          RELEASE_KIND: ${{ steps.build.outputs.release_kind }}
+        run: |
+          args=("$VERSION" slurmtui-linux-amd64 slurmtui-linux-arm64 SHA256SUMS --verify-tag --title "$VERSION" --generate-notes)
+          if [[ "$RELEASE_KIND" == "prerelease" ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "${args[@]}"
