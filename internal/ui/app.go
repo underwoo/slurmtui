@@ -42,41 +42,50 @@ type App struct {
 	options Options
 	clock   func() time.Time
 
-	width, height  int
-	mode           mode
-	showHelp       bool
-	tab            registry.Tab
-	scope          slurm.Scope
-	queueJobs      []model.Job
-	recentJobs     []model.Job
-	filteredQueue  []model.Job
-	filteredRecent []model.Job
-	queueSort      columnSort
-	recentSort     columnSort
-	picker         listPicker
-	pickerColumns  bool
-	columnWarning  string
-	queueCursor    int
-	recentCursor   int
-	queueLoading   bool
-	recentLoading  bool
-	queueError     error
-	recentError    error
-	lastRefresh    time.Time
-	detail         *model.JobDetail
-	detailJob      model.Job
-	detailError    error
-	detailScroll   int
-	showAllFields  bool
-	detailRequest  uint64
-	confirmAction  jobAction
-	confirmJob     model.Job
-	confirmReturn  mode
-	actionStatus   string
-	filterInput    textinput.Model
-	filterPattern  string
-	filterRegex    *regexp.Regexp
-	filterError    error
+	width, height   int
+	mode            mode
+	showHelp        bool
+	tab             registry.Tab
+	scope           slurm.Scope
+	queueJobs       []model.Job
+	recentJobs      []model.Job
+	filteredQueue   []model.Job
+	filteredRecent  []model.Job
+	queueSort       columnSort
+	recentSort      columnSort
+	picker          listPicker
+	pickerColumns   bool
+	columnWarning   string
+	queueCursor     int
+	recentCursor    int
+	queueLoading    bool
+	recentLoading   bool
+	queueError      error
+	recentError     error
+	lastRefresh     time.Time
+	detail          *model.JobDetail
+	detailJob       model.Job
+	detailError     error
+	detailScroll    int
+	showAllFields   bool
+	detailRequest   uint64
+	confirmAction   jobAction
+	confirmJob      model.Job
+	confirmReturn   mode
+	actionStatus    string
+	editAfterDetail bool
+	editReturn      mode
+	editJob         model.Job
+	editComment     string
+	editInputs      [3]textinput.Model
+	editField       int
+	editError       string
+	editConfirm     bool
+	editDiff        []string
+	filterInput     textinput.Model
+	filterPattern   string
+	filterRegex     *regexp.Regexp
+	filterError     error
 }
 
 func New() tea.Model {
@@ -158,6 +167,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			detail := msg.detail
 			a.detail = &detail
+			if a.editAfterDetail {
+				a.editAfterDetail = false
+				a.beginEditForm(detail.Job, detail.Comment, modeList)
+			}
+		}
+		if msg.err != nil && a.editAfterDetail {
+			a.editAfterDetail = false
+			a.actionStatus = "could not load job for edit: " + msg.err.Error()
+			a.mode = modeList
 		}
 	case actionResult:
 		if msg.err != nil {
@@ -166,6 +184,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.actionStatus = msg.action.pastTense() + " " + msg.job.DisplayID()
 		return a, tea.Batch(a.startQueueFetch(), a.startRecentFetch())
+	case editResult:
+		if msg.err != nil {
+			a.actionStatus = "edit failed: " + msg.err.Error()
+			break
+		}
+		a.actionStatus = "updated " + msg.job.DisplayID()
+		commands := []tea.Cmd{a.startQueueFetch(), a.startRecentFetch()}
+		if a.editReturn == modeDetail {
+			a.detail = nil
+			a.detailRequest++
+			commands = append(commands, a.startDetailFetch(msg.job, a.tab == registry.RecentTab, a.detailRequest))
+		}
+		return a, tea.Batch(commands...)
 	}
 	return a, nil
 }
@@ -242,6 +273,20 @@ func (a *App) handleListKey(msg tea.KeyMsg) tea.Cmd {
 		a.beginActionFromSelection(actionForHold(a.selectedJob()))
 	case key.Matches(msg, appKeys.requeue):
 		a.beginActionFromSelection(actionRequeue)
+	case key.Matches(msg, appKeys.edit):
+		_, jobs, cursor, _, _ := a.activeData()
+		if cursor >= 0 && cursor < len(jobs) {
+			a.detailJob = jobs[cursor]
+			a.detailError, a.detail = nil, nil
+			a.detailRequest++
+			if a.runner == nil {
+				a.actionStatus = "could not load job for edit: slurm runner is unavailable"
+				return nil
+			}
+			a.editAfterDetail = true
+			a.mode = modeDetail
+			return a.startDetailFetch(a.detailJob, a.tab == registry.RecentTab, a.detailRequest)
+		}
 	}
 	return nil
 }
@@ -254,8 +299,13 @@ func (a *App) handleDetailKey(msg tea.KeyMsg) tea.Cmd {
 		a.beginJobAction(actionForHold(a.detailJob), a.detailJob, modeDetail)
 	case key.Matches(msg, appKeys.requeue):
 		a.beginJobAction(actionRequeue, a.detailJob, modeDetail)
+	case key.Matches(msg, appKeys.edit):
+		if a.detail != nil {
+			a.beginEditForm(a.detail.Job, a.detail.Comment, modeDetail)
+		}
 	case key.Matches(msg, appKeys.back):
 		a.mode = modeList
+		a.editAfterDetail = false
 		a.detail, a.detailError = nil, nil
 		a.showAllFields = false
 		a.detailScroll = 0
@@ -641,6 +691,18 @@ func (a *App) handlePickerKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 func (a *App) handleConfirmKey(msg tea.KeyMsg) tea.Cmd {
+	if a.editConfirm {
+		if msg.Type == tea.KeyRunes && string(msg.Runes) == "y" {
+			a.editConfirm = false
+			a.mode = a.editReturn
+			a.actionStatus = "updating " + a.editJob.DisplayID() + "…"
+			return a.runJobEdit()
+		}
+		a.mode = modeForm
+		a.editConfirm = false
+		a.actionStatus = "edit aborted; form retained"
+		return nil
+	}
 	if msg.Type == tea.KeyRunes && string(msg.Runes) == "y" {
 		a.mode = a.confirmReturn
 		a.actionStatus = a.confirmAction.presentTense() + " " + a.confirmJob.DisplayID() + "…"
@@ -653,9 +715,28 @@ func (a *App) handleConfirmKey(msg tea.KeyMsg) tea.Cmd {
 
 func (a *App) handleFormKey(msg tea.KeyMsg) tea.Cmd {
 	if key.Matches(msg, appKeys.back) {
-		a.mode = modeList
+		a.mode = a.editReturn
+		return nil
 	}
-	return nil
+	if key.Matches(msg, appKeys.enter) || key.Matches(msg, appKeys.tab) {
+		if a.editField < len(a.editInputs)-1 {
+			a.focusEditField(a.editField + 1)
+		} else {
+			a.submitEditForm()
+		}
+		return nil
+	}
+	if msg.Type == tea.KeyUp {
+		a.focusEditField(max(0, a.editField-1))
+		return nil
+	}
+	if msg.Type == tea.KeyDown {
+		a.focusEditField(min(len(a.editInputs)-1, a.editField+1))
+		return nil
+	}
+	var cmd tea.Cmd
+	a.editInputs[a.editField], cmd = a.editInputs[a.editField].Update(msg)
+	return cmd
 }
 
 func (a *App) View() string {
@@ -669,7 +750,15 @@ func (a *App) View() string {
 		return out.String()
 	}
 	if a.mode == modeConfirm {
-		a.renderConfirm(&out)
+		if a.editConfirm {
+			a.renderEditConfirm(&out)
+		} else {
+			a.renderConfirm(&out)
+		}
+		return out.String()
+	}
+	if a.mode == modeForm {
+		a.renderEditForm(&out)
 		return out.String()
 	}
 	if a.mode == modePicker {
@@ -689,7 +778,7 @@ func (a *App) View() string {
 	fmt.Fprintf(&out, "%s  %s\n", queueTab, recentTab)
 
 	if a.showHelp {
-		fmt.Fprintln(&out, "tab / 1 / 2 switch views   ↑/↓ or j/k select   enter details   / filter   s sort   c columns   x cancel   h hold/release   R requeue   r refresh   u scope   ? help   q quit")
+		fmt.Fprintln(&out, "tab / 1 / 2 switch views   ↑/↓ or j/k select   enter details   / filter   s sort   c columns   x cancel   h hold/release   R requeue   e edit   r refresh   u scope   ? help   q quit")
 	} else {
 		columns := a.displayedColumns()
 		widths := fitWidths(columns, width)
@@ -739,7 +828,10 @@ func (a *App) View() string {
 	if a.actionStatus != "" {
 		status += "  " + a.actionStatus
 	}
-	if sourceErr != nil || otherErr != nil || a.filterError != nil || a.columnWarning != "" || strings.HasPrefix(a.actionStatus, "action failed:") {
+	if a.editError != "" {
+		status += "  " + a.editError
+	}
+	if sourceErr != nil || otherErr != nil || a.filterError != nil || a.columnWarning != "" || strings.HasPrefix(a.actionStatus, "action failed:") || strings.HasPrefix(a.actionStatus, "edit failed:") {
 		fmt.Fprintln(&out, errorStyle.Render(status))
 	} else {
 		fmt.Fprintln(&out, mutedStyle.Render(status))
