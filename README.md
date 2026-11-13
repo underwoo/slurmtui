@@ -68,7 +68,9 @@ The **Queue** view shows active jobs. **Recent** shows jobs that completed withi
 | `↑`/`↓`, `j`/`k` | Select a job |
 | `PgUp`/`PgDn` | Move through the list or scroll job details |
 | `Enter` | Open details for the selected job |
-| `Esc` | Return from job details to the list |
+| `/` | Open the live regular-expression filter (Enter keeps it; Esc clears it) |
+| `s` | Sort by a visible column; selecting the current column flips direction |
+| `Esc` | Return from job details to the list, or clear an active filter |
 | `a` | Show or hide the raw All fields section in job details |
 | `r` | Refresh the job lists |
 | `u` | Toggle between your jobs and all visible users' jobs |
@@ -76,6 +78,8 @@ The **Queue** view shows active jobs. **Recent** shows jobs that completed withi
 | `q`, `Ctrl+C` | Quit |
 
 Job details include summary, requested and allocated resources, timing, paths, accounting steps when available, and reason/dependency information. Active jobs are queried with `scontrol`; Recent jobs use `sacct`.
+
+The filter uses Go's RE2 regular-expression syntax. Lowercase patterns match without regard to case; adding an uppercase letter makes the pattern case-sensitive. The filter applies to the rendered values of visible columns in both views.
 
 ## Options
 
