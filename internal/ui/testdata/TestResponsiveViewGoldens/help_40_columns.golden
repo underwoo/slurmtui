@@ -1,0 +1,19 @@
+Slurm TUI  scope: me
+[Q╭──────────────────────────────────╮
+Jo│ Key bindings                     │d…
+──│ Navigation                       │──
+12│ ↑/k   select previous            │d…
+Qu│ ↓/j   select next                │
+en│ pgup  page up                    │p
+  │ pgdn  page down                  │
+  │ enter details                    │
+  │ View                             │
+  │ tab next view                    │
+  │ 1   queue view                   │
+  │ 2   recent view                  │
+  │ /   filter                       │
+  │ s   sort                         │
+  │ c   columns                      │
+  │ Job actions                      │
+  │ ↑/↓ or j/k scroll • ?/esc close  │
+  ╰──────────────────────────────────╯

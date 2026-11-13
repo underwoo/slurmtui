@@ -1,10 +1,6 @@
 package ui
 
-import (
-	"strings"
-
-	"github.com/charmbracelet/bubbles/key"
-)
+import "github.com/charmbracelet/bubbles/key"
 
 type appKeyMap struct {
 	quit      key.Binding
@@ -45,54 +41,21 @@ var appKeys = appKeyMap{
 	hold:      key.NewBinding(key.WithKeys("h"), key.WithHelp("h", "hold/release")),
 	requeue:   key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "requeue")),
 	edit:      key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit job")),
-	toggle:    key.NewBinding(key.WithKeys(" ")),
-	moveUp:    key.NewBinding(key.WithKeys("K")),
-	moveDown:  key.NewBinding(key.WithKeys("J")),
-	save:      key.NewBinding(key.WithKeys("w")),
-	tab:       key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab/1/2", "view")),
-	queue:     key.NewBinding(key.WithKeys("1")),
-	recent:    key.NewBinding(key.WithKeys("2")),
-	up:        key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/↓", "select")),
-	down:      key.NewBinding(key.WithKeys("down", "j")),
-	pageUp:    key.NewBinding(key.WithKeys("pgup"), key.WithHelp("pgup/pgdn", "page")),
-	pageDown:  key.NewBinding(key.WithKeys("pgdown")),
+	toggle:    key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "toggle column")),
+	moveUp:    key.NewBinding(key.WithKeys("K"), key.WithHelp("K", "move column up")),
+	moveDown:  key.NewBinding(key.WithKeys("J"), key.WithHelp("J", "move column down")),
+	save:      key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "save columns")),
+	tab:       key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "next view")),
+	queue:     key.NewBinding(key.WithKeys("1"), key.WithHelp("1", "queue view")),
+	recent:    key.NewBinding(key.WithKeys("2"), key.WithHelp("2", "recent view")),
+	up:        key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "select previous")),
+	down:      key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "select next")),
+	pageUp:    key.NewBinding(key.WithKeys("pgup"), key.WithHelp("pgup", "page up")),
+	pageDown:  key.NewBinding(key.WithKeys("pgdown"), key.WithHelp("pgdn", "page down")),
 	scroll:    key.NewBinding(key.WithKeys("up", "down", "j", "k"), key.WithHelp("↑/↓ or j/k", "scroll")),
 	refresh:   key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
-	scope:     key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "scope")),
+	scope:     key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "toggle scope")),
 	enter:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "details")),
 	back:      key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 	allFields: key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "all fields")),
-}
-
-func (appKeyMap) listHelp() string {
-	return strings.Join([]string{
-		appKeys.tab.Help().Key + " " + appKeys.tab.Help().Desc,
-		appKeys.up.Help().Key + " select",
-		appKeys.enter.Help().Key + " " + appKeys.enter.Help().Desc,
-		appKeys.refresh.Help().Key + " " + appKeys.refresh.Help().Desc,
-		appKeys.scope.Help().Key + " " + appKeys.scope.Help().Desc,
-		appKeys.filter.Help().Key + " " + appKeys.filter.Help().Desc,
-		appKeys.sort.Help().Key + " " + appKeys.sort.Help().Desc,
-		appKeys.columns.Help().Key + " " + appKeys.columns.Help().Desc,
-		appKeys.cancel.Help().Key + " " + appKeys.cancel.Help().Desc,
-		appKeys.hold.Help().Key + " " + appKeys.hold.Help().Desc,
-		appKeys.requeue.Help().Key + " " + appKeys.requeue.Help().Desc,
-		appKeys.edit.Help().Key + " " + appKeys.edit.Help().Desc,
-		appKeys.help.Help().Key + " " + appKeys.help.Help().Desc,
-		appKeys.quit.Help().Key + " " + appKeys.quit.Help().Desc,
-	}, "  ")
-}
-
-func (appKeyMap) detailHelp() string {
-	return strings.Join([]string{
-		appKeys.scroll.Help().Key + " " + appKeys.scroll.Help().Desc,
-		appKeys.pageUp.Help().Key + " " + appKeys.pageUp.Help().Desc,
-		appKeys.allFields.Help().Key + " " + appKeys.allFields.Help().Desc,
-		appKeys.cancel.Help().Key + " " + appKeys.cancel.Help().Desc,
-		appKeys.hold.Help().Key + " " + appKeys.hold.Help().Desc,
-		appKeys.requeue.Help().Key + " " + appKeys.requeue.Help().Desc,
-		appKeys.edit.Help().Key + " " + appKeys.edit.Help().Desc,
-		appKeys.back.Help().Key + " " + appKeys.back.Help().Desc,
-		appKeys.quit.Help().Key + " " + appKeys.quit.Help().Desc,
-	}, "  ")
 }

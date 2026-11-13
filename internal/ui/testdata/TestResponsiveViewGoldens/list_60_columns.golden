@@ -1,0 +1,7 @@
+Slurm TUI  scope: me
+[Queue]  Recent
+JobID Name  User  Acco… Part… QOS   State Elap… Nodes NodeL…
+───── ───── ───── ───── ───── ───── ───── ───── ───── ──────
+12345 samp… test… scie… comp…       RUNN… 1:00… —     node-…
+Queue: 1 jobs
+enter details  / filter  s sort  x cancel  e edit  ? help

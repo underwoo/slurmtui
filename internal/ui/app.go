@@ -12,12 +12,15 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"slurmtui/internal/config"
 	"slurmtui/internal/model"
 	"slurmtui/internal/registry"
 	"slurmtui/internal/slurm"
 )
+
+const minTerminalWidth = 20
 
 var (
 	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
@@ -45,6 +48,7 @@ type App struct {
 	width, height   int
 	mode            mode
 	showHelp        bool
+	helpScroll      int
 	tab             registry.Tab
 	scope           slurm.Scope
 	queueJobs       []model.Job
@@ -202,6 +206,27 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
+	if a.showHelp {
+		switch {
+		case key.Matches(msg, appKeys.help), key.Matches(msg, appKeys.back):
+			a.showHelp = false
+			a.helpScroll = 0
+		case key.Matches(msg, appKeys.up):
+			a.helpScroll = max(0, a.helpScroll-1)
+		case key.Matches(msg, appKeys.down):
+			a.helpScroll++
+		case key.Matches(msg, appKeys.pageUp):
+			a.helpScroll = max(0, a.helpScroll-a.pageSize())
+		case key.Matches(msg, appKeys.pageDown):
+			a.helpScroll += a.pageSize()
+		}
+		return nil
+	}
+	if key.Matches(msg, appKeys.help) && a.mode != modeFilter && a.mode != modeForm && a.mode != modeConfirm {
+		a.showHelp = true
+		a.helpScroll = 0
+		return nil
+	}
 	switch a.mode {
 	case modeDetail:
 		return a.handleDetailKey(msg)
@@ -222,8 +247,6 @@ func (a *App) handleListKey(msg tea.KeyMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, appKeys.quit):
 		return tea.Quit
-	case key.Matches(msg, appKeys.help):
-		a.showHelp = !a.showHelp
 	case key.Matches(msg, appKeys.filter):
 		return a.beginFilter()
 	case key.Matches(msg, appKeys.sort):
@@ -570,9 +593,9 @@ func (a *App) renderPicker(out *strings.Builder, width int) {
 	fmt.Fprintf(out, "%s  %s\n", queueTab, recentTab)
 	fmt.Fprintln(out, a.picker.View(width, a.height))
 	if a.pickerColumns {
-		fmt.Fprint(out, mutedStyle.Render("space toggle  J/K reorder  w save  esc cancel"))
+		fmt.Fprint(out, mutedStyle.Render(fitFooter(width, []string{"space toggle", "J/K reorder", "w save", "esc cancel"})))
 	} else {
-		fmt.Fprint(out, mutedStyle.Render("↑/↓ or j/k select  pgup/pgdn page  enter sort  esc cancel"))
+		fmt.Fprint(out, mutedStyle.Render(fitFooter(width, []string{"↑/↓ or j/k select", "pgup/pgdn page", "enter sort", "esc cancel"})))
 	}
 }
 
@@ -744,10 +767,20 @@ func (a *App) View() string {
 	if width <= 0 {
 		width = 120
 	}
+	if width < minTerminalWidth {
+		return fitOutput("terminal too narrow (need ≥ "+fmt.Sprint(minTerminalWidth)+" cols)", width)
+	}
+	if a.showHelp {
+		a.showHelp = false
+		background := a.View()
+		a.showHelp = true
+		panel, panelWidth, panelTop := a.renderHelpOverlay(width, a.height)
+		return fitOutput(compositeOverlay(background, panel, width, panelWidth, panelTop), width)
+	}
 	var out strings.Builder
 	if a.mode == modeDetail {
 		a.renderDetail(&out, width)
-		return out.String()
+		return fitOutput(out.String(), width)
 	}
 	if a.mode == modeConfirm {
 		if a.editConfirm {
@@ -755,15 +788,15 @@ func (a *App) View() string {
 		} else {
 			a.renderConfirm(&out)
 		}
-		return out.String()
+		return fitOutput(out.String(), width)
 	}
 	if a.mode == modeForm {
 		a.renderEditForm(&out)
-		return out.String()
+		return fitOutput(out.String(), width)
 	}
 	if a.mode == modePicker {
 		a.renderPicker(&out, width)
-		return out.String()
+		return fitOutput(out.String(), width)
 	}
 	tabName, jobs, cursor, loading, sourceErr := a.activeData()
 	fmt.Fprintf(&out, "%s  %s\n", titleStyle.Render("Slurm TUI"), mutedStyle.Render("scope: "+string(a.scope)))
@@ -777,17 +810,13 @@ func (a *App) View() string {
 	}
 	fmt.Fprintf(&out, "%s  %s\n", queueTab, recentTab)
 
-	if a.showHelp {
-		fmt.Fprintln(&out, "tab / 1 / 2 switch views   ↑/↓ or j/k select   enter details   / filter   s sort   c columns   x cancel   h hold/release   R requeue   e edit   r refresh   u scope   ? help   q quit")
-	} else {
-		columns := a.displayedColumns()
-		widths := fitWidths(columns, width)
-		tableHeight := a.height - 5
-		if tableHeight <= 0 {
-			tableHeight = 20
-		}
-		a.renderTable(&out, columns, widths, jobs, cursor, tableHeight)
+	columns := a.displayedColumns()
+	widths := fitWidths(columns, width)
+	tableHeight := a.height - 5
+	if tableHeight <= 0 {
+		tableHeight = 20
 	}
+	a.renderTable(&out, columns, widths, jobs, cursor, tableHeight)
 
 	status := fmt.Sprintf("%s: %d jobs", tabName, len(jobs))
 	if a.filterStatusVisible() {
@@ -836,8 +865,8 @@ func (a *App) View() string {
 	} else {
 		fmt.Fprintln(&out, mutedStyle.Render(status))
 	}
-	fmt.Fprint(&out, mutedStyle.Render(appKeys.listHelp()))
-	return out.String()
+	fmt.Fprint(&out, mutedStyle.Render(fitFooter(width, []string{"enter details", "/ filter", "s sort", "x cancel", "e edit", "tab views", "r refresh", "q quit"})))
+	return fitOutput(out.String(), width)
 }
 
 func (a *App) renderDetail(out *strings.Builder, width int) {
@@ -878,7 +907,7 @@ func (a *App) renderDetail(out *strings.Builder, width int) {
 	if a.actionStatus != "" {
 		fmt.Fprintln(out, mutedStyle.Render(a.actionStatus))
 	}
-	fmt.Fprintln(out, mutedStyle.Render(appKeys.detailHelp()))
+	fmt.Fprintln(out, mutedStyle.Render(fitFooter(width, []string{"↑/↓ scroll", "a all fields", "x cancel", "h hold/release", "R requeue", "e edit", "esc back", "q quit"})))
 }
 
 func wrapCommentLine(line string, width int) []string {
@@ -925,14 +954,10 @@ func truncateLine(line string, width int) string {
 	if width < 1 {
 		return ""
 	}
-	runes := []rune(line)
-	if len(runes) <= width {
+	if lipgloss.Width(line) <= width {
 		return line
 	}
-	if width == 1 {
-		return "…"
-	}
-	return string(runes[:width-1]) + "…"
+	return ansi.Truncate(line, width, "…")
 }
 
 func (a *App) renderTable(out *strings.Builder, columns []registry.Column, widths []int, jobs []model.Job, cursor, tableHeight int) {
