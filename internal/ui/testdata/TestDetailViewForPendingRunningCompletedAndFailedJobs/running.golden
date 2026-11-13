@@ -8,6 +8,7 @@ Account: account-03
 Partition: partition-01
 QOS: qos-01
 State: RUNNING
+Comment: comment-01
 Node list: node-02
 Node count: 1
 

@@ -54,12 +54,16 @@ func decodeScontrolDetail(data []byte) (model.JobDetail, error) {
 	if len(envelope.Jobs) == 0 {
 		return model.JobDetail{}, errors.New("scontrol JSON contains no job")
 	}
-	var job model.Job
+	var job struct {
+		model.Job
+		Comment string `json:"comment"`
+	}
 	if err := json.Unmarshal(envelope.Jobs[0], &job); err != nil {
 		return model.JobDetail{}, fmt.Errorf("decode scontrol job: %w", err)
 	}
 	return model.JobDetail{
-		Job:           job,
+		Job:           job.Job,
+		Comment:       job.Comment,
 		RequestedText: job.TRESRequested,
 		AllocatedText: job.TRESAllocated,
 		RawJSON:       append(json.RawMessage(nil), envelope.Jobs[0]...),
@@ -99,7 +103,7 @@ func decodeSacctDetail(data []byte, id string) (model.JobDetail, error) {
 		job := record.job()
 		if job.DisplayID() == id || fmt.Sprint(record.ID) == id {
 			job.WorkingDirectory, job.Stdout, job.Stderr, job.Stdin = record.WorkingDirectory, record.Stdout, record.Stderr, record.Stdin
-			return model.JobDetail{Job: job, Requested: record.TRES.Requested, Allocated: record.TRES.Allocated, Steps: record.jobSteps(), RawJSON: append(json.RawMessage(nil), record.raw...)}, nil
+			return model.JobDetail{Job: job, Comment: record.Comment.Job, Requested: record.TRES.Requested, Allocated: record.TRES.Allocated, Steps: record.jobSteps(), RawJSON: append(json.RawMessage(nil), record.raw...)}, nil
 		}
 	}
 	return model.JobDetail{}, fmt.Errorf("sacct returned no detail for job %s", id)
@@ -107,6 +111,9 @@ func decodeSacctDetail(data []byte, id string) (model.JobDetail, error) {
 
 type sacctDetailJob struct {
 	sacctJob
+	Comment struct {
+		Job string `json:"job"`
+	} `json:"comment"`
 	TRES struct {
 		Requested []model.TRES `json:"requested"`
 		Allocated []model.TRES `json:"allocated"`

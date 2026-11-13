@@ -148,6 +148,40 @@ func TestDetailViewSplitsMultilineCommandIntoViewportRows(t *testing.T) {
 	}
 }
 
+func TestWrapCommentLineRespectsWidthAndNewlines(t *testing.T) {
+	got := wrapCommentLine("Comment: first long comment\nsecond line", 20)
+	want := []string{"Comment: first long", "         comment", "         second line"}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("wrapped comment = %q, want %q", got, want)
+	}
+}
+
+func TestSummaryTrimsCommentsAndOmitsBlankValues(t *testing.T) {
+	var summary registry.DetailSection
+	for _, section := range registry.DetailSections() {
+		if section.ID == "summary" {
+			summary = section
+			break
+		}
+	}
+	if summary.Render == nil {
+		t.Fatal("summary detail section not found")
+	}
+	for _, comment := range []string{"", " \n\t "} {
+		for _, line := range summary.Render(model.JobDetail{Comment: comment}, time.Time{}) {
+			if strings.HasPrefix(line, "Comment:") {
+				t.Fatalf("blank comment rendered as %q", line)
+			}
+		}
+	}
+	for _, line := range summary.Render(model.JobDetail{Comment: "  note\ncontinued  "}, time.Time{}) {
+		if line == "Comment: note\ncontinued" {
+			return
+		}
+	}
+	t.Fatal("summary did not trim surrounding whitespace while retaining an internal newline")
+}
+
 type detailTestRunner struct {
 	command  string
 	response []byte
