@@ -123,6 +123,62 @@ func TestFilterNoMatchesAndSurvivesRefresh(t *testing.T) {
 	}
 }
 
+func TestSortByColumnFlipsDirectionAndKeepsSelection(t *testing.T) {
+	app := NewWithOptions(nil, Options{Scope: slurm.ScopeMe})
+	app.queueJobs = []model.Job{{ID: 3, Name: "c"}, {ID: 1, Name: "a"}, {ID: 2, Name: "b"}}
+	app.queueCursor = 0
+	app.beginSort()
+	app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if app.queueSort.columnID != "job_id" || app.queueSort.descending {
+		t.Fatalf("first sort selection = %+v, want ascending JobID", app.queueSort)
+	}
+	if got := app.visibleQueue()[app.queueCursor].ID; got != 3 {
+		t.Fatalf("ascending sort selection = %d, want selected job 3", got)
+	}
+	if !strings.Contains(app.View(), "JobID ▲") {
+		t.Fatalf("ascending sort indicator missing:\n%s", app.View())
+	}
+	app.beginSort()
+	app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !app.queueSort.descending {
+		t.Fatal("selecting current sort column did not flip direction")
+	}
+	if got := app.visibleQueue()[app.queueCursor].ID; got != 3 {
+		t.Fatalf("descending sort selection = %d, want selected job 3", got)
+	}
+	if !strings.Contains(app.View(), "JobID ▼") {
+		t.Fatalf("descending sort indicator missing:\n%s", app.View())
+	}
+}
+
+func TestSortIsPerTabAndUsesJobIDForTies(t *testing.T) {
+	app := NewWithOptions(nil, Options{Scope: slurm.ScopeMe})
+	app.queueJobs = []model.Job{{ID: 3, Name: "same"}, {ID: 1, Name: "same"}, {ID: 2, Name: "same"}}
+	app.beginSort()
+	app.picker.Move(1) // Name
+	app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	got := []int64{app.queueJobs[0].ID, app.queueJobs[1].ID, app.queueJobs[2].ID}
+	if fmt.Sprint(got) != "[1 2 3]" {
+		t.Fatalf("equal values were not broken by JobID: %v", got)
+	}
+	app.tab = registry.RecentTab
+	app.recentJobs = []model.Job{{ID: 8}, {ID: 7}}
+	if app.recentSort.active {
+		t.Fatal("Queue sort state leaked into Recent")
+	}
+	if got := app.recentJobs[0].ID; got != 8 {
+		t.Fatalf("Recent source order changed without its own sort: first ID=%d", got)
+	}
+	app.beginSort()
+	app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !app.recentSort.active || app.recentSort.columnID != "job_id" || app.queueSort.columnID != "name" {
+		t.Fatalf("sort state not isolated per tab: queue=%+v recent=%+v", app.queueSort, app.recentSort)
+	}
+	if got := app.recentJobs[0].ID; got != 7 {
+		t.Fatalf("Recent sort did not apply independently: first ID=%d", got)
+	}
+}
+
 func TestRecentViewGolden(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 	location := time.FixedZone("EST", -5*60*60)

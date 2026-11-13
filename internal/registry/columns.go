@@ -24,10 +24,11 @@ type Column struct {
 	DefaultVisible bool
 	RecentOnly     bool
 	Value          func(model.Job, time.Time, *time.Location) string
+	Less           func(model.Job, model.Job) bool
 }
 
 func DefaultColumns() []Column {
-	return []Column{
+	columns := []Column{
 		{ID: "job_id", Header: "JobID", Width: 12, MinWidth: 6, DefaultVisible: true, Value: func(job model.Job, _ time.Time, _ *time.Location) string { return job.DisplayID() }},
 		{ID: "name", Header: "Name", Width: 22, MinWidth: 7, DefaultVisible: true, Value: func(job model.Job, _ time.Time, _ *time.Location) string { return job.Name }},
 		{ID: "user", Header: "User", Width: 12, MinWidth: 6, DefaultVisible: true, Value: func(job model.Job, _ time.Time, _ *time.Location) string { return job.UserName }},
@@ -45,6 +46,10 @@ func DefaultColumns() []Column {
 			return "—"
 		}},
 	}
+	for i := range columns {
+		columns[i].Less = lessForColumn(columns[i].ID)
+	}
+	return columns
 }
 
 func firstState(states []model.State) string {

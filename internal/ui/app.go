@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -46,6 +47,9 @@ type App struct {
 	recentJobs     []model.Job
 	filteredQueue  []model.Job
 	filteredRecent []model.Job
+	queueSort      columnSort
+	recentSort     columnSort
+	picker         listPicker
 	queueCursor    int
 	recentCursor   int
 	queueLoading   bool
@@ -115,6 +119,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			oldJobs := a.visibleQueue()
 			a.queueJobs = msg.result.Jobs
+			sortJobs(a.queueJobs, registry.VisibleColumns(registry.QueueTab), a.queueSort)
 			a.recomputeQueueFilter()
 			a.queueCursor = restoreCursor(oldJobs, a.visibleQueue(), a.queueCursor)
 			a.lastRefresh = msg.at
@@ -128,6 +133,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			oldJobs := a.visibleRecent()
 			a.recentJobs = msg.result.Jobs
+			sortJobs(a.recentJobs, registry.VisibleColumns(registry.RecentTab), a.recentSort)
 			a.recomputeRecentFilter()
 			a.recentCursor = restoreCursor(oldJobs, a.visibleRecent(), a.recentCursor)
 			a.lastRefresh = msg.at
@@ -170,6 +176,8 @@ func (a *App) handleListKey(msg tea.KeyMsg) tea.Cmd {
 		a.showHelp = !a.showHelp
 	case key.Matches(msg, appKeys.filter):
 		return a.beginFilter()
+	case key.Matches(msg, appKeys.sort):
+		a.beginSort()
 	case key.Matches(msg, appKeys.back):
 		if a.hasFilterDraft() {
 			a.clearFilter()
@@ -270,6 +278,97 @@ func (a *App) beginFilter() tea.Cmd {
 	return a.filterInput.Focus()
 }
 
+func (a *App) beginSort() {
+	columns := registry.VisibleColumns(a.tab)
+	items := make([]string, len(columns))
+	cursor := 0
+	state := a.activeSort()
+	for i, column := range columns {
+		items[i] = column.Header
+		if state.active && column.ID == state.columnID {
+			cursor = i
+		}
+	}
+	a.picker = newListPicker("Sort by column", items, cursor)
+	a.mode = modePicker
+}
+
+func (a *App) activeSort() *columnSort {
+	if a.tab == registry.RecentTab {
+		return &a.recentSort
+	}
+	return &a.queueSort
+}
+
+func (a *App) applyPickedSort() {
+	columns := registry.VisibleColumns(a.tab)
+	index := a.picker.Cursor()
+	if index < 0 || index >= len(columns) {
+		a.mode = modeList
+		return
+	}
+	oldQueue := append([]model.Job(nil), a.visibleQueue()...)
+	oldRecent := append([]model.Job(nil), a.visibleRecent()...)
+	state := a.activeSort()
+	column := columns[index]
+	if state.active && state.columnID == column.ID {
+		state.descending = !state.descending
+	} else {
+		state.active = true
+		state.columnID = column.ID
+		state.descending = false
+	}
+	if a.tab == registry.RecentTab {
+		sortJobs(a.recentJobs, columns, *state)
+		a.recomputeRecentFilter()
+		a.recentCursor = restoreCursor(oldRecent, a.visibleRecent(), a.recentCursor)
+	} else {
+		sortJobs(a.queueJobs, columns, *state)
+		a.recomputeQueueFilter()
+		a.queueCursor = restoreCursor(oldQueue, a.visibleQueue(), a.queueCursor)
+	}
+	a.mode = modeList
+}
+
+func sortJobs(jobs []model.Job, columns []registry.Column, state columnSort) {
+	if !state.active {
+		return
+	}
+	var selected registry.Column
+	for _, column := range columns {
+		if column.ID == state.columnID {
+			selected = column
+			break
+		}
+	}
+	if selected.Less == nil {
+		return
+	}
+	sort.SliceStable(jobs, func(i, j int) bool {
+		a, b := jobs[i], jobs[j]
+		if selected.Less(a, b) {
+			return !state.descending
+		}
+		if selected.Less(b, a) {
+			return state.descending
+		}
+		return registry.JobIDLess(a, b)
+	})
+}
+
+func (a *App) renderPicker(out *strings.Builder, width int) {
+	fmt.Fprintf(out, "%s  %s\n", titleStyle.Render("Slurm TUI"), mutedStyle.Render("scope: "+string(a.scope)))
+	queueTab, recentTab := mutedStyle.Render("Queue"), mutedStyle.Render("Recent")
+	if a.tab == registry.QueueTab {
+		queueTab = titleStyle.Render("[Queue]")
+	} else {
+		recentTab = titleStyle.Render("[Recent]")
+	}
+	fmt.Fprintf(out, "%s  %s\n", queueTab, recentTab)
+	fmt.Fprintln(out, a.picker.View(width, a.height))
+	fmt.Fprint(out, mutedStyle.Render("↑/↓ or j/k select  pgup/pgdn page  enter sort  esc cancel"))
+}
+
 func (a *App) applyFilter(pattern string) {
 	compiled, err := compileFilter(pattern)
 	if err != nil {
@@ -344,8 +443,19 @@ func (a *App) recomputeRecentFilter() {
 }
 
 func (a *App) handlePickerKey(msg tea.KeyMsg) tea.Cmd {
-	if key.Matches(msg, appKeys.back) {
+	switch {
+	case key.Matches(msg, appKeys.back):
 		a.mode = modeList
+	case key.Matches(msg, appKeys.up):
+		a.picker.Move(-1)
+	case key.Matches(msg, appKeys.down):
+		a.picker.Move(1)
+	case key.Matches(msg, appKeys.pageUp):
+		a.picker.Move(-a.pageSize())
+	case key.Matches(msg, appKeys.pageDown):
+		a.picker.Move(a.pageSize())
+	case key.Matches(msg, appKeys.enter):
+		a.applyPickedSort()
 	}
 	return nil
 }
@@ -374,6 +484,10 @@ func (a *App) View() string {
 		a.renderDetail(&out, width)
 		return out.String()
 	}
+	if a.mode == modePicker {
+		a.renderPicker(&out, width)
+		return out.String()
+	}
 	tabName, jobs, cursor, loading, sourceErr := a.activeData()
 	fmt.Fprintf(&out, "%s  %s\n", titleStyle.Render("Slurm TUI"), mutedStyle.Render("scope: "+string(a.scope)))
 	var queueTab, recentTab string
@@ -387,9 +501,9 @@ func (a *App) View() string {
 	fmt.Fprintf(&out, "%s  %s\n", queueTab, recentTab)
 
 	if a.showHelp {
-		fmt.Fprintln(&out, "tab / 1 / 2 switch views   ↑/↓ or j/k select   enter details   r refresh   u toggle scope   ? help   q quit")
+		fmt.Fprintln(&out, "tab / 1 / 2 switch views   ↑/↓ or j/k select   enter details   / filter   s sort   r refresh   u toggle scope   ? help   q quit")
 	} else {
-		columns := registry.VisibleColumns(a.tab)
+		columns := a.displayedColumns()
 		widths := fitWidths(columns, width)
 		tableHeight := a.height - 5
 		if tableHeight <= 0 {
@@ -576,6 +690,24 @@ func (a *App) renderTable(out *strings.Builder, columns []registry.Column, width
 		out.WriteString(text)
 		out.WriteByte('\n')
 	}
+}
+
+func (a *App) displayedColumns() []registry.Column {
+	columns := registry.VisibleColumns(a.tab)
+	state := a.activeSort()
+	if state.active {
+		for i := range columns {
+			if columns[i].ID == state.columnID {
+				arrow := " ▲"
+				if state.descending {
+					arrow = " ▼"
+				}
+				columns[i].Header += arrow
+				break
+			}
+		}
+	}
+	return columns
 }
 
 func pad(value string, width int) string {

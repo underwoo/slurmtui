@@ -10,6 +10,7 @@ type appKeyMap struct {
 	quit      key.Binding
 	help      key.Binding
 	filter    key.Binding
+	sort      key.Binding
 	tab       key.Binding
 	queue     key.Binding
 	recent    key.Binding
@@ -29,6 +30,7 @@ var appKeys = appKeyMap{
 	quit:      key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 	help:      key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 	filter:    key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter")),
+	sort:      key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sort")),
 	tab:       key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab/1/2", "view")),
 	queue:     key.NewBinding(key.WithKeys("1")),
 	recent:    key.NewBinding(key.WithKeys("2")),
@@ -52,6 +54,7 @@ func (appKeyMap) listHelp() string {
 		appKeys.refresh.Help().Key + " " + appKeys.refresh.Help().Desc,
 		appKeys.scope.Help().Key + " " + appKeys.scope.Help().Desc,
 		appKeys.filter.Help().Key + " " + appKeys.filter.Help().Desc,
+		appKeys.sort.Help().Key + " " + appKeys.sort.Help().Desc,
 		appKeys.help.Help().Key + " " + appKeys.help.Help().Desc,
 		appKeys.quit.Help().Key + " " + appKeys.quit.Help().Desc,
 	}, "  ")
