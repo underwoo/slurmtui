@@ -4,4 +4,4 @@ JobID        Name                   User         Account      Partition  QOS    
 ──────────── ────────────────────── ──────────── ──────────── ────────── ───────── ────────────── ─────────────────── ─────── ──────────────────────── ────────────────
 34827648     completed              user         account      partition  qos       COMPLETED      0:00/—              —       —                        11-10 18:00     
 Recent: 1 jobs
-tab/1/2 view  ↑/↓ select  enter details  r refresh  u scope  / filter  s sort  c columns  ? help  q quit
+tab/1/2 view  ↑/↓ select  enter details  r refresh  u scope  / filter  s sort  c columns  x cancel  h hold/release  R requeue  ? help  q quit
