@@ -1,0 +1,20 @@
+Slu╭────────────────────────────────╮   
+[Qu│ Key bindings                   │   
+Jo…│ Navigation                     │od…
+───│ ↑/k   select previous          │───
+12…│ ↓/j   select next              │od…
+Que│ pgup  page up                  │   
+ent│ pgdn  page down                │lp 
+   │ enter details                  │   
+   │ View                           │   
+   │ tab next view                  │   
+   │ 1   queue view                 │   
+   │ 2   recent view                │   
+   │ /   filter                     │   
+   │ s   sort                       │   
+   │ c   columns                    │   
+   │ Job actions                    │   
+   │ ↑/↓ or j/k scroll • ?/esc      │   
+   │ close                          │   
+   ╰────────────────────────────────╯   
+                                        

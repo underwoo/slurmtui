@@ -1,0 +1,20 @@
+Slurm TUI  scope: me                                                                                                    
+[Queue]  Recent          ╭────────────────────────────────────────────────────────────────────╮                         
+JobID        Name        │ Key bindings                                                       │im… Nodes   NodeList(Rea…
+──────────── ────────────│ Navigation                                                         │─── ─────── ─────────────
+12345        sample-job  │ ↑/k   select previous                                              │    —       node-01      
+Queue: 1 jobs            │ ↓/j   select next                                                  │                         
+enter details  / filter  │ pgup  page up                                                      │                         
+                         │ pgdn  page down                                                    │                         
+                         │ enter details                                                      │                         
+                         │ View                                                               │                         
+                         │ tab next view                                                      │                         
+                         │ 1   queue view                                                     │                         
+                         │ 2   recent view                                                    │                         
+                         │ /   filter                                                         │                         
+                         │ s   sort                                                           │                         
+                         │ c   columns                                                        │                         
+                         │ Job actions                                                        │                         
+                         │ ↑/↓ or j/k scroll • ?/esc close                                    │                         
+                         ╰────────────────────────────────────────────────────────────────────╯                         
+                                                                                                                        

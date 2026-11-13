@@ -50,6 +50,112 @@ func TestModeKeysDoNotLeak(t *testing.T) {
 	}
 }
 
+func TestHelpOverlayConsumesKeysAndScrolls(t *testing.T) {
+	app := NewWithOptions(nil, Options{})
+	app.width, app.height = 40, 12
+	app.showHelp = true
+	before := app.helpScroll
+	_, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	if cmd != nil || !app.showHelp {
+		t.Fatal("key leaked through help overlay")
+	}
+	app.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if app.helpScroll <= before {
+		t.Fatal("page down did not scroll help")
+	}
+	app.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if app.showHelp || app.helpScroll != 0 {
+		t.Fatalf("escape did not close and reset help: showing=%v scroll=%d", app.showHelp, app.helpScroll)
+	}
+}
+
+func TestResponsiveViewGoldens(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	clock := func() time.Time { return time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC) }
+	job := model.Job{ID: 12345, Name: "sample-job", UserName: "tester", Account: "science", Partition: "compute", States: []model.State{model.StateRunning}, NodeList: "node-01", ElapsedSeconds: 3600}
+	for _, width := range []int{40, 60, 120} {
+		for _, view := range []string{"list", "detail", "help"} {
+			t.Run(fmt.Sprintf("%s_%d_columns", view, width), func(t *testing.T) {
+				app := NewWithOptions(nil, Options{Clock: clock, Scope: slurm.ScopeMe})
+				app.width, app.height = width, 20
+				app.queueJobs = []model.Job{job}
+				switch view {
+				case "detail":
+					app.mode = modeDetail
+					app.detailJob = job
+					app.detail = &model.JobDetail{Job: job}
+				case "help":
+					app.showHelp = true
+				}
+				teatest.RequireEqualOutput(t, []byte(app.View()))
+			})
+		}
+	}
+}
+
+func TestEveryModeFitsFortyColumnsAtTwelveRows(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	job := model.Job{ID: 12345, Name: strings.Repeat("long-job-name-", 8), UserName: "another-user", States: []model.State{model.StatePending}}
+	newApp := func() *App {
+		app := NewWithOptions(nil, Options{Scope: slurm.ScopeMe})
+		app.width, app.height = 40, 12
+		app.queueJobs = []model.Job{job}
+		return app
+	}
+	tests := map[string]func(*App){
+		"list":   nil,
+		"detail": func(a *App) { a.mode, a.detailJob, a.detail = modeDetail, job, &model.JobDetail{Job: job} },
+		"filter": func(a *App) {
+			a.mode = modeFilter
+			a.filterInput.SetValue(strings.Repeat("long-filter", 8))
+			a.queueError = fmt.Errorf("queue error: %s", strings.Repeat("details", 12))
+		},
+		"picker":  func(a *App) { a.beginColumnPicker() },
+		"confirm": func(a *App) { a.mode, a.confirmAction, a.confirmJob = modeConfirm, actionCancel, job },
+		"form":    func(a *App) { a.beginEditForm(job, strings.Repeat("comment", 20), modeList) },
+		"edit_confirm": func(a *App) {
+			a.mode, a.editConfirm, a.editJob = modeConfirm, true, job
+			a.editDiff = []string{strings.Repeat("before and after value", 8)}
+		},
+		"help": func(a *App) { a.showHelp = true },
+	}
+	for name, setup := range tests {
+		t.Run(name, func(t *testing.T) {
+			app := newApp()
+			if setup != nil {
+				setup(app)
+			}
+			for i, line := range strings.Split(app.View(), "\n") {
+				if got := lipgloss.Width(line); got > 40 {
+					t.Fatalf("line %d is %d columns wide: %q", i+1, got, line)
+				}
+			}
+		})
+	}
+}
+
+func TestNarrowTerminalShowsFittedMessage(t *testing.T) {
+	app := NewWithOptions(nil, Options{})
+	app.width = 12
+	view := app.View()
+	if lipgloss.Width(view) > 12 || !strings.Contains(view, "terminal") {
+		t.Fatalf("narrow-terminal message was not fitted: %q", view)
+	}
+}
+
+func TestFooterFitsAndKeepsHelpLast(t *testing.T) {
+	line := fitFooter(28, []string{"enter details", "/ filter", "s sort", "x cancel", "e edit"})
+	if lipgloss.Width(line) > 28 || !strings.HasSuffix(line, "? help") {
+		t.Fatalf("footer does not fit or help is not last: %q", line)
+	}
+	if !strings.HasPrefix(line, "enter details") || strings.Contains(line, "x cancel") {
+		t.Fatalf("footer did not keep higher-priority actions first: %q", line)
+	}
+	if got := fitFooter(4, []string{"enter details"}); got != "?" {
+		t.Fatalf("too narrow footer = %q, want ?", got)
+	}
+}
+
 func TestFilterSmartCase(t *testing.T) {
 	insensitive, err := compileFilter("alpha")
 	if err != nil {

@@ -1,0 +1,20 @@
+Job detail: 12345
+
+Summary
+Job ID: 12345
+Name: sample-job
+User: tester
+Account: science
+Partition: compute
+QOS: —
+State: RUNNING
+Node list: node-01
+Node count: —
+
+Resources
+Requested TRES:
+  —
+Allocated TRES:
+  —
+
+↑/↓ scroll  a all fields  ? help
