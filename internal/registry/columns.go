@@ -30,6 +30,7 @@ type Column struct {
 func DefaultColumns() []Column {
 	columns := []Column{
 		{ID: "job_id", Header: "JobID", Width: 12, MinWidth: 6, DefaultVisible: true, Value: func(job model.Job, _ time.Time, _ *time.Location) string { return job.DisplayID() }},
+		{ID: "cluster", Header: "Cluster", Width: 10, MinWidth: 6, Value: func(job model.Job, _ time.Time, _ *time.Location) string { return job.Cluster }},
 		{ID: "name", Header: "Name", Width: 22, MinWidth: 7, DefaultVisible: true, Value: func(job model.Job, _ time.Time, _ *time.Location) string { return job.Name }},
 		{ID: "user", Header: "User", Width: 12, MinWidth: 6, DefaultVisible: true, Value: func(job model.Job, _ time.Time, _ *time.Location) string { return job.UserName }},
 		{ID: "account", Header: "Account", Width: 12, MinWidth: 6, DefaultVisible: true, Value: func(job model.Job, _ time.Time, _ *time.Location) string { return job.Account }},
@@ -124,14 +125,27 @@ func localLocation(location *time.Location) *time.Location {
 }
 
 func VisibleColumns(tab Tab) []Column {
-	all := DefaultColumns()
+	all := AllColumns(tab)
 	visible := make([]Column, 0, len(all))
 	for _, column := range all {
-		if column.DefaultVisible && (!column.RecentOnly || tab == RecentTab) {
+		if column.DefaultVisible {
 			visible = append(visible, column)
 		}
 	}
 	return visible
+}
+
+// AllColumns returns every built-in column supported by a tab, including
+// columns that are hidden by default but can be selected by the user.
+func AllColumns(tab Tab) []Column {
+	all := DefaultColumns()
+	columns := make([]Column, 0, len(all))
+	for _, column := range all {
+		if !column.RecentOnly || tab == RecentTab {
+			columns = append(columns, column)
+		}
+	}
+	return columns
 }
 
 // ColumnsForIDs resolves an optional configured order. Unknown IDs are omitted
@@ -141,7 +155,7 @@ func ColumnsForIDs(tab Tab, ids []string) ([]Column, []string) {
 		return VisibleColumns(tab), nil
 	}
 	available := make(map[string]Column)
-	for _, column := range VisibleColumns(tab) {
+	for _, column := range AllColumns(tab) {
 		available[column.ID] = column
 	}
 	columns := make([]Column, 0, len(ids))

@@ -9,13 +9,13 @@ import (
 
 func TestColumnComparators(t *testing.T) {
 	low := model.Job{
-		ID: 2, Name: "a", UserName: "a", Account: "a", Partition: "a", QOS: "a",
+		ID: 2, Name: "a", Cluster: "a", UserName: "a", Account: "a", Partition: "a", QOS: "a",
 		States: []model.State{model.StateRunning}, ElapsedSeconds: 2,
 		TimeLimit: model.NoValNumber{Set: true, Number: 2}, NodeCount: model.NoValNumber{Set: true, Number: 2},
 		NodeList: "a", EndTime: model.NoValNumber{Set: true, Number: 2},
 	}
 	high := model.Job{
-		ID: 10, Name: "b", UserName: "b", Account: "b", Partition: "b", QOS: "b",
+		ID: 10, Name: "b", Cluster: "b", UserName: "b", Account: "b", Partition: "b", QOS: "b",
 		States: []model.State{model.StateRunning}, ElapsedSeconds: 10,
 		TimeLimit: model.NoValNumber{Set: true, Number: 10}, NodeCount: model.NoValNumber{Set: true, Number: 10},
 		NodeList: "b", EndTime: model.NoValNumber{Set: true, Number: 10},
@@ -39,13 +39,14 @@ func TestColumnComparators(t *testing.T) {
 
 func TestColumnComparatorsPlaceUnsetValuesLast(t *testing.T) {
 	valid := model.Job{
-		ID: 10, Name: "job", UserName: "user", Account: "account", Partition: "partition", QOS: "normal",
+		ID: 10, Name: "job", Cluster: "cluster-01", UserName: "user", Account: "account", Partition: "partition", QOS: "normal",
 		States: []model.State{model.StateRunning}, ElapsedSeconds: 10,
 		TimeLimit: model.NoValNumber{Set: true, Number: 60}, NodeCount: model.NoValNumber{Set: true, Number: 2},
 		NodeList: "node-01", EndTime: model.NoValNumber{Set: true, Number: 10},
 	}
 	missing := valid
 	missing.Name = ""
+	missing.Cluster = ""
 	missing.UserName = "—"
 	missing.Account = ""
 	missing.Partition = "—"

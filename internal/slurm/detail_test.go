@@ -15,12 +15,12 @@ import (
 func TestGetJobDetailUsesScontrolForQueueAndDecodesFields(t *testing.T) {
 	job := model.Job{ID: 42}
 	runner := newFakeRunner()
-	runner.responses["scontrol show job 42 --json"] = []byte(`{"jobs":[{"job_id":42,"name":"running","job_state":["RUNNING"],"comment":"  useful note  ","tres_req_str":"cpu=4,mem=8G","tres_alloc_str":"cpu=4,mem=8G"}]}`)
+	runner.responses["scontrol show job 42 --json"] = []byte(`{"jobs":[{"job_id":42,"name":"running","cluster":"c5","job_state":["RUNNING"],"comment":"  useful note  ","tres_req_str":"cpu=4,mem=8G","tres_alloc_str":"cpu=4,mem=8G"}]}`)
 	detail, err := GetJobDetail(context.Background(), runner, job, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if detail.Job.Name != "running" || detail.Comment != "  useful note  " || detail.RequestedText != "cpu=4,mem=8G" || detail.AllocatedText != "cpu=4,mem=8G" {
+	if detail.Job.Name != "running" || detail.Job.Cluster != "c5" || detail.Comment != "  useful note  " || detail.RequestedText != "cpu=4,mem=8G" || detail.AllocatedText != "cpu=4,mem=8G" {
 		t.Fatalf("decoded detail = %+v", detail)
 	}
 	if len(runner.calls) != 1 || runner.calls[0] != "scontrol show job 42 --json" {
@@ -62,7 +62,7 @@ func TestDecodeSacctDetailIncludesStepsAndPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if detail.Job.Name != "job-01" || detail.Comment != "  useful note  " || len(detail.Steps) != 2 {
+	if detail.Job.Name != "job-01" || detail.Job.Cluster != "cluster-01" || detail.Comment != "  useful note  " || len(detail.Steps) != 2 {
 		t.Fatalf("job = %+v, steps = %d", detail.Job, len(detail.Steps))
 	}
 	if detail.Steps[0].ID != "34827648.batch" || detail.Steps[1].ID != "34827648.extern" {
@@ -122,8 +122,8 @@ func TestDecodeScontrolDetailFromSyntheticPendingQueueJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !containsState(detail.Job.States, model.StatePending) {
-		t.Fatalf("decoded pending state = %v", detail.Job.States)
+	if !containsState(detail.Job.States, model.StatePending) || detail.Job.Cluster != "cluster-01" {
+		t.Fatalf("decoded pending state/cluster = %v/%q", detail.Job.States, detail.Job.Cluster)
 	}
 }
 

@@ -2,6 +2,7 @@ Job detail: 12345
 
 Summary
 Job ID: 12345
+Cluster: —
 Name: sample-job
 User: tester
 Account: science
@@ -16,5 +17,4 @@ Requested TRES:
   —
 Allocated TRES:
   —
-
 ↑/↓ scroll  a all fields  ? help

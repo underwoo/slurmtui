@@ -28,6 +28,8 @@ func lessForColumn(id string) func(model.Job, model.Job) bool {
 		return func(a, b model.Job) bool { return lessNoVal(a.EndTime, b.EndTime) }
 	case "name":
 		return func(a, b model.Job) bool { return lessText(a.Name, b.Name) }
+	case "cluster":
+		return func(a, b model.Job) bool { return lessText(a.Cluster, b.Cluster) }
 	case "user":
 		return func(a, b model.Job) bool { return lessText(a.UserName, b.UserName) }
 	case "account":

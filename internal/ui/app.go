@@ -38,51 +38,52 @@ type App struct {
 	options Options
 	clock   func() time.Time
 
-	width, height   int
-	mode            mode
-	showHelp        bool
-	helpScroll      int
-	tab             registry.Tab
-	scope           slurm.Scope
-	queueJobs       []model.Job
-	recentJobs      []model.Job
-	filteredQueue   []model.Job
-	filteredRecent  []model.Job
-	queueSort       columnSort
-	recentSort      columnSort
-	picker          listPicker
-	pickerColumns   bool
-	columnWarning   string
-	queueCursor     int
-	recentCursor    int
-	queueLoading    bool
-	recentLoading   bool
-	queueError      error
-	recentError     error
-	lastRefresh     time.Time
-	detail          *model.JobDetail
-	detailJob       model.Job
-	detailError     error
-	detailScroll    int
-	showAllFields   bool
-	detailRequest   uint64
-	confirmAction   jobAction
-	confirmJob      model.Job
-	confirmReturn   mode
-	actionStatus    string
-	editAfterDetail bool
-	editReturn      mode
-	editJob         model.Job
-	editComment     string
-	editInputs      [3]textinput.Model
-	editField       int
-	editError       string
-	editConfirm     bool
-	editDiff        []string
-	filterInput     textinput.Model
-	filterPattern   string
-	filterRegex     *regexp.Regexp
-	filterError     error
+	width, height      int
+	mode               mode
+	showHelp           bool
+	helpScroll         int
+	tab                registry.Tab
+	scope              slurm.Scope
+	queueJobs          []model.Job
+	recentJobs         []model.Job
+	filteredQueue      []model.Job
+	filteredRecent     []model.Job
+	autoClusterVisible bool
+	queueSort          columnSort
+	recentSort         columnSort
+	picker             listPicker
+	pickerColumns      bool
+	columnWarning      string
+	queueCursor        int
+	recentCursor       int
+	queueLoading       bool
+	recentLoading      bool
+	queueError         error
+	recentError        error
+	lastRefresh        time.Time
+	detail             *model.JobDetail
+	detailJob          model.Job
+	detailError        error
+	detailScroll       int
+	showAllFields      bool
+	detailRequest      uint64
+	confirmAction      jobAction
+	confirmJob         model.Job
+	confirmReturn      mode
+	actionStatus       string
+	editAfterDetail    bool
+	editReturn         mode
+	editJob            model.Job
+	editComment        string
+	editInputs         [3]textinput.Model
+	editField          int
+	editError          string
+	editConfirm        bool
+	editDiff           []string
+	filterInput        textinput.Model
+	filterPattern      string
+	filterRegex        *regexp.Regexp
+	filterError        error
 }
 
 func New() tea.Model {
@@ -135,11 +136,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.queueError = msg.err
 		if msg.err == nil {
-			oldJobs := a.visibleQueue()
+			oldQueue, oldRecent := a.visibleQueue(), a.visibleRecent()
 			a.queueJobs = msg.result.Jobs
-			sortJobs(a.queueJobs, a.columnsFor(registry.QueueTab), a.queueSort)
-			a.recomputeQueueFilter()
-			a.queueCursor = restoreCursor(oldJobs, a.visibleQueue(), a.queueCursor)
+			if a.maybeEnableClusterColumn() {
+				a.refreshAfterClusterColumnChange(oldQueue, oldRecent)
+			} else {
+				sortJobs(a.queueJobs, a.columnsFor(registry.QueueTab), a.queueSort)
+				a.recomputeQueueFilter()
+				a.queueCursor = restoreCursor(oldQueue, a.visibleQueue(), a.queueCursor)
+			}
 			a.lastRefresh = msg.at
 		}
 	case recentResult:
@@ -149,11 +154,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.recentError = msg.err
 		if msg.err == nil {
-			oldJobs := a.visibleRecent()
+			oldQueue, oldRecent := a.visibleQueue(), a.visibleRecent()
 			a.recentJobs = msg.result.Jobs
-			sortJobs(a.recentJobs, a.columnsFor(registry.RecentTab), a.recentSort)
-			a.recomputeRecentFilter()
-			a.recentCursor = restoreCursor(oldJobs, a.visibleRecent(), a.recentCursor)
+			if a.maybeEnableClusterColumn() {
+				a.refreshAfterClusterColumnChange(oldQueue, oldRecent)
+			} else {
+				sortJobs(a.recentJobs, a.columnsFor(registry.RecentTab), a.recentSort)
+				a.recomputeRecentFilter()
+				a.recentCursor = restoreCursor(oldRecent, a.visibleRecent(), a.recentCursor)
+			}
 			a.lastRefresh = msg.at
 		}
 	case detailResult:
@@ -394,7 +403,7 @@ func (a *App) beginSort() {
 }
 
 func (a *App) beginColumnPicker() {
-	all := registry.VisibleColumns(a.tab)
+	all := registry.AllColumns(a.tab)
 	visible := a.columnsFor(a.tab)
 	visibleIDs := make(map[string]bool, len(visible))
 	for _, column := range visible {
@@ -422,7 +431,63 @@ func (a *App) columnsFor(tab registry.Tab) []registry.Column {
 		ids = a.options.RecentColumns
 	}
 	columns, _ := registry.ColumnsForIDs(tab, ids)
+	if ids == nil && a.autoClusterVisible {
+		return withClusterColumn(columns)
+	}
 	return columns
+}
+
+func withClusterColumn(columns []registry.Column) []registry.Column {
+	for _, column := range columns {
+		if column.ID == "cluster" {
+			return columns
+		}
+	}
+	for _, column := range registry.AllColumns(registry.QueueTab) {
+		if column.ID == "cluster" {
+			result := make([]registry.Column, 0, len(columns)+1)
+			if len(columns) > 0 {
+				result = append(result, columns[0], column)
+				result = append(result, columns[1:]...)
+			} else {
+				result = append(result, column)
+			}
+			return result
+		}
+	}
+	return columns
+}
+
+func (a *App) maybeEnableClusterColumn() bool {
+	if a.autoClusterVisible {
+		return false
+	}
+	clusters := make(map[string]struct{})
+	for _, job := range append(append([]model.Job(nil), a.queueJobs...), a.recentJobs...) {
+		if strings.TrimSpace(job.FederationOrigin) != "" || strings.TrimSpace(job.FederationSiblingsActive) != "" || strings.TrimSpace(job.FederationSiblingsViable) != "" {
+			a.autoClusterVisible = true
+			return true
+		}
+		if cluster := strings.TrimSpace(job.Cluster); cluster != "" {
+			clusters[cluster] = struct{}{}
+		}
+	}
+	if len(clusters) > 1 {
+		a.autoClusterVisible = true
+		return true
+	}
+	return false
+}
+
+func (a *App) refreshAfterClusterColumnChange(oldQueue, oldRecent []model.Job) {
+	// Job IDs remain unique across federation siblings. A future -M override
+	// must key selections and actions by (cluster, ID) instead.
+	sortJobs(a.queueJobs, a.columnsFor(registry.QueueTab), a.queueSort)
+	sortJobs(a.recentJobs, a.columnsFor(registry.RecentTab), a.recentSort)
+	a.recomputeQueueFilter()
+	a.recomputeRecentFilter()
+	a.queueCursor = restoreCursor(oldQueue, a.visibleQueue(), a.queueCursor)
+	a.recentCursor = restoreCursor(oldRecent, a.visibleRecent(), a.recentCursor)
 }
 
 func (a *App) refreshColumnWarnings() {
