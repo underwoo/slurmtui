@@ -64,6 +64,13 @@ func TestListRecentScrubbedFixtureNormalizesAndFilters(t *testing.T) {
 	if result.Jobs[0].UserName == "" || result.Jobs[0].States[0] != "COMPLETED" {
 		t.Fatalf("sacct user/state were not normalized: %+v", result.Jobs[0])
 	}
+	clusters := map[string]bool{}
+	for _, job := range result.Jobs {
+		clusters[job.Cluster] = true
+	}
+	if !clusters["cluster-01"] || !clusters["cluster-02"] {
+		t.Fatalf("sacct clusters = %v, want cluster-01 and cluster-02", clusters)
+	}
 	if result.Jobs[0].ElapsedSeconds != 5 || result.Jobs[0].TimeLimit.Number != 210 {
 		t.Fatalf("sacct timing was not normalized: elapsed=%d limit=%+v", result.Jobs[0].ElapsedSeconds, result.Jobs[0].TimeLimit)
 	}

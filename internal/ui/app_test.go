@@ -482,6 +482,10 @@ func TestQueueAndRecentColumns(t *testing.T) {
 	if queueIDs["end"] || !recentIDs["end"] {
 		t.Fatalf("End column visibility: queue=%t recent=%t", queueIDs["end"], recentIDs["end"])
 	}
+	allQueue := registry.AllColumns(registry.QueueTab)
+	if len(allQueue) < 2 || allQueue[0].ID != "job_id" || allQueue[1].ID != "cluster" || queueIDs["cluster"] {
+		t.Fatalf("cluster default placement/visibility: all=%v visible=%t", columnIDsForTest(allQueue), queueIDs["cluster"])
+	}
 	var endColumn registry.Column
 	for _, column := range registry.DefaultColumns() {
 		if column.ID == "end" {
@@ -509,6 +513,98 @@ func TestQueueAndRecentColumns(t *testing.T) {
 	if got := byID["elapsed_limit"].Value(model.Job{States: []model.State{model.StatePending}, TimeLimit: model.NoValNumber{Infinite: true}}, time.Time{}, nil); got != "—/∞" {
 		t.Errorf("pending Elapsed/TimeLimit = %q, want —/∞", got)
 	}
+}
+
+func TestClusterColumnAutoDefaultIsFederationAwareStickyAndConfigurable(t *testing.T) {
+	single := readQueueFixture(t)
+	app := NewWithOptions(nil, Options{Scope: slurm.ScopeMe})
+	app.Update(queueResult{scope: slurm.ScopeMe, result: slurm.ListResult{Jobs: single}})
+	if app.autoClusterVisible || hasColumn(app.columnsFor(registry.QueueTab), "cluster") {
+		t.Fatal("Cluster column appeared for single-cluster jobs")
+	}
+
+	multi := readRecentClusterFixture(t)
+	app.Update(recentResult{scope: slurm.ScopeMe, result: slurm.ListResult{Jobs: multi}})
+	if !app.autoClusterVisible || !hasColumn(app.columnsFor(registry.QueueTab), "cluster") || !hasColumn(app.columnsFor(registry.RecentTab), "cluster") {
+		t.Fatal("multi-cluster Recent jobs did not enable Cluster on both unconfigured tabs")
+	}
+	app.Update(recentResult{scope: slurm.ScopeMe, result: slurm.ListResult{Jobs: singleClusterJobs(multi)}})
+	if !hasColumn(app.columnsFor(registry.QueueTab), "cluster") || !hasColumn(app.columnsFor(registry.RecentTab), "cluster") {
+		t.Fatal("Cluster column disappeared after multi-cluster jobs drained")
+	}
+
+	configured := NewWithOptions(nil, Options{Scope: slurm.ScopeMe, QueueColumns: []string{"job_id", "name"}, RecentColumns: []string{"job_id", "cluster"}})
+	configured.Update(recentResult{scope: slurm.ScopeMe, result: slurm.ListResult{Jobs: multi}})
+	if hasColumn(configured.columnsFor(registry.QueueTab), "cluster") || !hasColumn(configured.columnsFor(registry.RecentTab), "cluster") {
+		t.Fatal("auto Cluster visibility overrode an explicit per-tab column configuration")
+	}
+}
+
+func TestFederationFieldsDoNotEnableClusterColumnForSingleCluster(t *testing.T) {
+	app := NewWithOptions(nil, Options{Scope: slurm.ScopeMe})
+	app.Update(queueResult{scope: slurm.ScopeMe, result: slurm.ListResult{Jobs: []model.Job{{
+		ID: 1, Cluster: "gfdl", FederationOrigin: "gfdl", FederationSiblingsActive: "c5,c6,es", FederationSiblingsViable: "c5,c6,es,gfdl",
+	}}}})
+	if app.autoClusterVisible || hasColumn(app.columnsFor(registry.QueueTab), "cluster") {
+		t.Fatal("federation metadata enabled Cluster column for single-cluster jobs")
+	}
+}
+
+func TestRecentClusterFixtureDecodesClusters(t *testing.T) {
+	jobs := readRecentClusterFixture(t)
+	clusters := map[string]bool{}
+	for _, job := range jobs {
+		clusters[job.Cluster] = true
+	}
+	if !clusters["cluster-01"] || !clusters["cluster-02"] {
+		t.Fatalf("recent fixture clusters = %v, want cluster-01 and cluster-02", clusters)
+	}
+}
+
+func hasColumn(columns []registry.Column, id string) bool {
+	for _, column := range columns {
+		if column.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func columnIDsForTest(columns []registry.Column) []string {
+	ids := make([]string, len(columns))
+	for i, column := range columns {
+		ids[i] = column.ID
+	}
+	return ids
+}
+
+func singleClusterJobs(jobs []model.Job) []model.Job {
+	filtered := make([]model.Job, 0, len(jobs))
+	for _, job := range jobs {
+		if job.Cluster == "cluster-01" {
+			filtered = append(filtered, job)
+		}
+	}
+	return filtered
+}
+
+func readRecentClusterFixture(t *testing.T) []model.Job {
+	t.Helper()
+	data := readSlurmFixture(t, "sacct_recent.json")
+	var response struct {
+		Jobs []struct {
+			ID      int64  `json:"job_id"`
+			Cluster string `json:"cluster"`
+		} `json:"jobs"`
+	}
+	if err := json.Unmarshal(data, &response); err != nil {
+		t.Fatal(err)
+	}
+	jobs := make([]model.Job, 0, len(response.Jobs))
+	for _, record := range response.Jobs {
+		jobs = append(jobs, model.Job{ID: record.ID, Cluster: record.Cluster})
+	}
+	return jobs
 }
 
 func TestRefreshFailureKeepsExistingRows(t *testing.T) {
@@ -606,7 +702,11 @@ func TestSummaryTrimsCommentsAndOmitsBlankValues(t *testing.T) {
 			}
 		}
 	}
-	for _, line := range summary.Render(model.JobDetail{Comment: "  note\ncontinued  "}, time.Time{}, nil) {
+	lines := summary.Render(model.JobDetail{Job: model.Job{Cluster: "c5"}, Comment: "  note\ncontinued  "}, time.Time{}, nil)
+	if lines[1] != "Cluster: c5" {
+		t.Fatalf("summary cluster line = %q, want Cluster: c5", lines[1])
+	}
+	for _, line := range lines {
 		if line == "Comment: note\ncontinued" {
 			return
 		}

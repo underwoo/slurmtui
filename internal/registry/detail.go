@@ -34,7 +34,7 @@ func alwaysDetail(model.JobDetail) bool { return true }
 
 func renderSummary(d model.JobDetail, _ time.Time, _ *time.Location) []string {
 	j := d.Job
-	lines := []string{fmt.Sprintf("Job ID: %s", j.DisplayID()), fmt.Sprintf("Name: %s", emptyDash(j.Name)), fmt.Sprintf("User: %s", emptyDash(j.UserName)), fmt.Sprintf("Account: %s", emptyDash(j.Account)), fmt.Sprintf("Partition: %s", emptyDash(j.Partition)), fmt.Sprintf("QOS: %s", emptyDash(j.QOS)), fmt.Sprintf("State: %s", stateString(j.States))}
+	lines := []string{fmt.Sprintf("Job ID: %s", j.DisplayID()), fmt.Sprintf("Cluster: %s", emptyDash(j.Cluster)), fmt.Sprintf("Name: %s", emptyDash(j.Name)), fmt.Sprintf("User: %s", emptyDash(j.UserName)), fmt.Sprintf("Account: %s", emptyDash(j.Account)), fmt.Sprintf("Partition: %s", emptyDash(j.Partition)), fmt.Sprintf("QOS: %s", emptyDash(j.QOS)), fmt.Sprintf("State: %s", stateString(j.States))}
 	if comment := strings.TrimSpace(d.Comment); comment != "" {
 		lines = append(lines, "Comment: "+comment)
 	}

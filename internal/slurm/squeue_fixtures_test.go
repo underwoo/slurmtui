@@ -72,6 +72,11 @@ func TestListJobsScrubbedQueueFixture25_11(t *testing.T) {
 	if len(result.Jobs) != 20 {
 		t.Fatalf("got %d jobs, want 20", len(result.Jobs))
 	}
+	for _, job := range result.Jobs {
+		if job.Cluster != "cluster-01" {
+			t.Fatalf("squeue cluster = %q, want cluster-01", job.Cluster)
+		}
+	}
 	pending, running := 0, 0
 	for _, job := range result.Jobs {
 		for _, state := range job.States {

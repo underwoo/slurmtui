@@ -90,6 +90,7 @@ type sacctJob struct {
 	Group     string `json:"group"`
 	GroupID   int64  `json:"group_id"`
 	Account   string `json:"account"`
+	Cluster   string `json:"cluster"`
 	Partition string `json:"partition"`
 	QOS       string `json:"qos"`
 	State     struct {
@@ -128,7 +129,7 @@ func (record sacctJob) job() model.Job {
 	job := model.Job{
 		ID: record.ID, Name: record.Name, UserName: record.User,
 		UserID: record.UserID, GroupName: record.Group, GroupID: record.GroupID,
-		Account: record.Account, Partition: record.Partition, QOS: record.QOS,
+		Account: record.Account, Cluster: record.Cluster, Partition: record.Partition, QOS: record.QOS,
 		States: record.State.Current, StateReason: record.State.Reason,
 		Dependency: record.Dependency, NodeList: record.Nodes,
 		NodeCount: present(record.AllocationNodes),
