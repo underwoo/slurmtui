@@ -464,10 +464,6 @@ func (a *App) maybeEnableClusterColumn() bool {
 	}
 	clusters := make(map[string]struct{})
 	for _, job := range append(append([]model.Job(nil), a.queueJobs...), a.recentJobs...) {
-		if strings.TrimSpace(job.FederationOrigin) != "" || strings.TrimSpace(job.FederationSiblingsActive) != "" || strings.TrimSpace(job.FederationSiblingsViable) != "" {
-			a.autoClusterVisible = true
-			return true
-		}
 		if cluster := strings.TrimSpace(job.Cluster); cluster != "" {
 			clusters[cluster] = struct{}{}
 		}

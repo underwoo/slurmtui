@@ -540,11 +540,13 @@ func TestClusterColumnAutoDefaultIsFederationAwareStickyAndConfigurable(t *testi
 	}
 }
 
-func TestFederationFieldsEnableClusterColumn(t *testing.T) {
+func TestFederationFieldsDoNotEnableClusterColumnForSingleCluster(t *testing.T) {
 	app := NewWithOptions(nil, Options{Scope: slurm.ScopeMe})
-	app.Update(queueResult{scope: slurm.ScopeMe, result: slurm.ListResult{Jobs: []model.Job{{ID: 1, Cluster: "es", FederationSiblingsActive: "c5,c6"}}}})
-	if !hasColumn(app.columnsFor(registry.QueueTab), "cluster") {
-		t.Fatal("federation siblings did not enable Cluster column")
+	app.Update(queueResult{scope: slurm.ScopeMe, result: slurm.ListResult{Jobs: []model.Job{{
+		ID: 1, Cluster: "gfdl", FederationOrigin: "gfdl", FederationSiblingsActive: "c5,c6,es", FederationSiblingsViable: "c5,c6,es,gfdl",
+	}}}})
+	if app.autoClusterVisible || hasColumn(app.columnsFor(registry.QueueTab), "cluster") {
+		t.Fatal("federation metadata enabled Cluster column for single-cluster jobs")
 	}
 }
 
