@@ -6,6 +6,7 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"slurmtui/internal/config"
 	"slurmtui/internal/slurm"
@@ -36,6 +37,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "slurmtui:", err)
 		os.Exit(2)
 	}
+
+	// Resolve the terminal background before Bubble Tea starts reading input.
+	lipgloss.HasDarkBackground()
 
 	program := tea.NewProgram(ui.NewWithOptions(slurm.ExecRunner{}, ui.Options{
 		RefreshInterval: settings.RefreshInterval,
