@@ -22,13 +22,6 @@ import (
 
 const minTerminalWidth = 20
 
-var (
-	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
-	mutedStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	selectedStyle = lipgloss.NewStyle().Reverse(true)
-	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-)
-
 type Options struct {
 	RefreshInterval time.Duration
 	RecentWindow    time.Duration

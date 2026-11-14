@@ -155,6 +155,42 @@ func TestNarrowTerminalShowsFittedMessage(t *testing.T) {
 	}
 }
 
+func TestAdaptiveTextColorsOnDarkAndLightBackgrounds(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.ANSI256)
+	t.Cleanup(func() {
+		lipgloss.SetColorProfile(termenv.Ascii)
+		lipgloss.SetHasDarkBackground(false)
+	})
+
+	tests := []struct {
+		name                         string
+		dark                         bool
+		mutedSGR, titleSGR, errorSGR string
+	}{
+		{name: "dark", dark: true, mutedSGR: "38;5;250m", titleSGR: "1;94m", errorSGR: "91m"},
+		{name: "light", mutedSGR: "38;5;240m", titleSGR: "1;34m", errorSGR: "31m"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			lipgloss.SetHasDarkBackground(tc.dark)
+			app := NewWithOptions(nil, Options{Scope: slurm.ScopeMe})
+			app.width, app.height = 80, 24
+			app.queueJobs = readQueueFixture(t)
+			app.queueError = fmt.Errorf("queue failed")
+			view := app.View()
+
+			for _, sgr := range []string{tc.mutedSGR, tc.titleSGR, tc.errorSGR} {
+				if !strings.Contains(view, "\x1b["+sgr) {
+					t.Errorf("rendered view is missing SGR sequence %q: %q", sgr, view)
+				}
+			}
+			if strings.Contains(view, "38;5;8") || strings.Contains(view, ";90m") {
+				t.Fatalf("rendered view uses ANSI 8/bright black foreground: %q", view)
+			}
+		})
+	}
+}
+
 func TestFooterFitsAndKeepsHelpLast(t *testing.T) {
 	line := fitFooter(28, []string{"enter details", "/ filter", "s sort", "x cancel", "e edit"})
 	if lipgloss.Width(line) > 28 || !strings.HasSuffix(line, "? help") {
